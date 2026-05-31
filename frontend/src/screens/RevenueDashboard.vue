@@ -81,7 +81,7 @@
 <button class="px-5 py-1.5 rounded-lg text-on-surface-variant font-button text-sm hover:bg-surface-container-high transition-colors">Năm</button>
 </div>
 <!-- Bento Grid Metrics -->
-<section class="grid grid-cols-1 md:grid-cols-3 gap-gutter">
+<section class="grid grid-cols-1 md:grid-cols-3 gap-gutter" v-if="summary">
 <!-- Sales Card -->
 <div class="bg-surface-container-lowest border border-outline-variant p-md rounded-xl shadow-sm hover:shadow-md transition-shadow group">
 <div class="flex justify-between items-start">
@@ -89,11 +89,7 @@
 <span class="material-symbols-outlined text-primary group-hover:scale-110 transition-transform">payments</span>
 </div>
 <div class="flex flex-col mt-2">
-<h2 class="font-h1 text-h1 text-on-surface">$2,450</h2>
-<div class="flex items-center gap-1 text-secondary mt-1">
-<span class="material-symbols-outlined text-sm">trending_up</span>
-<span class="text-body-sm">+12.5% so với kỳ trước</span>
-</div>
+<h2 class="font-h1 text-h1 text-on-surface">{{ formatPrice(summary.totalRevenue) }}</h2>
 </div>
 </div>
 <!-- Orders Card -->
@@ -103,10 +99,10 @@
 <span class="material-symbols-outlined text-primary group-hover:scale-110 transition-transform">bakery_dining</span>
 </div>
 <div class="flex flex-col mt-2">
-<h2 class="font-h1 text-h1 text-on-surface">32</h2>
+<h2 class="font-h1 text-h1 text-on-surface">{{ summary.totalOrders }}</h2>
 <div class="flex items-center gap-1 text-on-surface-variant mt-1">
 <span class="material-symbols-outlined text-sm">schedule</span>
-<span class="text-body-sm">8 đơn đang nướng</span>
+<span class="text-body-sm">{{ summary.pendingOrders }} đơn đang chờ xử lý</span>
 </div>
 </div>
 </div>
@@ -117,134 +113,69 @@
 <span class="material-symbols-outlined text-primary group-hover:scale-110 transition-transform">analytics</span>
 </div>
 <div class="flex flex-col mt-2">
-<h2 class="font-h1 text-h1 text-on-surface">$76</h2>
-<div class="flex items-center gap-1 text-secondary mt-1">
-<span class="material-symbols-outlined text-sm">star</span>
-<span class="text-body-sm">Hiệu suất đỉnh điểm buổi sáng</span>
-</div>
+<h2 class="font-h1 text-h1 text-on-surface">{{ formatPrice(summary.avgOrderValue) }}</h2>
 </div>
 </div>
 </section>
 <!-- Main Dashboard Layout -->
 <div class="grid grid-cols-1 lg:grid-cols-12 gap-gutter items-start">
-<!-- Batch Progress -->
-<section class="lg:col-span-12 bg-surface-container-lowest border border-outline-variant p-md rounded-xl shadow-sm">
-<div class="flex justify-between items-center mb-md">
-<h3 class="font-h3 text-h3 text-primary">Chu trình Sản xuất Sourdough</h3>
-<span class="bg-secondary-container text-on-secondary-container text-label-caps px-4 py-1.5 rounded-full font-bold">Đang nướng</span>
-</div>
-<div class="relative w-full h-3 bg-surface-container rounded-full overflow-hidden">
-<div class="absolute left-0 top-0 h-full bg-primary rounded-full" style="width: 65%;"></div>
-</div>
-<div class="flex justify-between mt-base text-body-sm text-on-surface-variant font-medium">
-<span>Ủ bột</span>
-<span class="text-primary font-bold">Đang nướng (65%)</span>
-<span>Để nguội</span>
-</div>
+<!-- Charts Section -->
+<section class="lg:col-span-12 grid grid-cols-1 md:grid-cols-2 gap-gutter">
+  <div class="bg-surface-container-lowest border border-outline-variant p-md rounded-xl shadow-sm h-[350px] flex flex-col">
+    <h3 class="font-h3 text-h3 text-primary mb-md">Doanh thu 7 ngày qua</h3>
+    <div class="flex-grow relative w-full h-full" v-if="loaded">
+      <Bar :data="revenueChartData" :options="chartOptions" />
+    </div>
+  </div>
+  <div class="bg-surface-container-lowest border border-outline-variant p-md rounded-xl shadow-sm h-[350px] flex flex-col">
+    <h3 class="font-h3 text-h3 text-primary mb-md">Tỷ trọng Danh mục</h3>
+    <div class="flex-grow relative w-full h-full flex justify-center" v-if="loaded">
+      <Pie :data="categoryChartData" :options="pieOptions" />
+    </div>
+  </div>
 </section>
 <!-- Top Products -->
-<section class="lg:col-span-8 bg-surface-container-lowest border border-outline-variant rounded-xl shadow-sm overflow-hidden">
+<section class="lg:col-span-8 bg-surface-container-lowest border border-outline-variant rounded-xl shadow-sm overflow-hidden" v-if="summary">
 <div class="p-md border-b border-outline-variant flex justify-between items-center">
-<h3 class="font-h3 text-h3 text-on-surface">Sản phẩm bán chạy</h3>
-<button class="text-primary font-button hover:underline decoration-primary">Xem Kho hàng</button>
+<h3 class="font-h3 text-h3 text-on-surface">Sản phẩm sắp hết hàng</h3>
+<router-link to="/inventory" class="text-primary font-button hover:underline decoration-primary">Xem Kho hàng</router-link>
 </div>
 <div class="divide-y divide-outline-variant">
-<!-- Product Item -->
-<div class="p-md flex items-center justify-between hover:bg-surface-container-low transition-colors group">
+<div v-for="p in summary.lowStockProducts" :key="p.productId" class="p-md flex items-center justify-between hover:bg-surface-container-low transition-colors group">
 <div class="flex items-center gap-md">
-<img alt="Sourdough Loaf" class="w-16 h-16 rounded-lg object-cover border border-outline-variant shadow-sm group-hover:scale-105 transition-transform" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD_2oWFg2We5hWN-zshzph_4svZztjjmAJQI4STxiZ1sI0XniCNUl-ZsF4sfYhWyasJmdWuCluNqBC3ezNg28Dz81D_I0mSIXftV2PsmD4kkah04EqwJx1_huXRFl3QxzHMd3qqCZFfOzVw0zk-fSN7HmLFNXFrv5hPxLzFfLeWWkJAtR5OdSbYvetEXva1habla_6Miu2DtgBt9tsNyyYGTX79PE5-OtpSEddtF9ne30LUevcLqYJTBEyRKpukd5A5ekRzCCksqQ"/>
+<img :alt="p.name" class="w-16 h-16 rounded-lg object-cover border border-outline-variant shadow-sm group-hover:scale-105 transition-transform" :src="imgUrl(p.imageUrl)"/>
 <div>
-<h4 class="font-body-lg text-body-lg font-bold text-on-surface">Bánh mì Sourdough</h4>
-<p class="font-body-sm text-body-sm text-on-surface-variant">Hỗn hợp Lúa mì Di sản</p>
+<h4 class="font-body-lg text-body-lg font-bold text-on-surface">{{ p.name }}</h4>
 </div>
 </div>
 <div class="text-right">
-<div class="font-h3 text-h3 text-on-surface">142</div>
-<div class="text-label-caps text-on-surface-variant">ĐÃ BÁN HÔM NAY</div>
+<div class="font-h3 text-h3 text-on-surface text-red-600">{{ p.stockQty }}</div>
+<div class="text-label-caps text-on-surface-variant">CÒN LẠI</div>
 </div>
 </div>
-<!-- Product Item -->
-<div class="p-md flex items-center justify-between hover:bg-surface-container-low transition-colors group">
-<div class="flex items-center gap-md">
-<img alt="Cinnamon Rolls" class="w-16 h-16 rounded-lg object-cover border border-outline-variant shadow-sm group-hover:scale-105 transition-transform" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCMG_7T-k8c0E5nbbBaXuFI-ipND0hHW7_kOqP815bgW4XLl9iSACOQd4-38YAHF1N8GbTKmRw8mV6BbSArClQNNp1WMXd9t41lEX_6YI3I1ex2S2k5xccMdXOQ-MPj_EyqxtWu8FkoJO-TqZ2kZpxMlqCph8U19yA5OUrdGxNoo81b3oyFVTa0RIKrbMxBbSIP1dpg3OgdK47lZyZJGf2jxOT1RGYSSudXFOj19l51xFF1hwF4--dRgUTE18qmr8kJ1fnVZCtomQ"/>
-<div>
-<h4 class="font-body-lg text-body-lg font-bold text-on-surface">Bánh cuộn Quế</h4>
-<p class="font-body-sm text-body-sm text-on-surface-variant">Lớp phủ Kem phô mai Đặc trưng</p>
-</div>
-</div>
-<div class="text-right">
-<div class="font-h3 text-h3 text-on-surface">98</div>
-<div class="text-label-caps text-on-surface-variant">ĐÃ BÁN HÔM NAY</div>
-</div>
-</div>
-<!-- Product Item -->
-<div class="p-md flex items-center justify-between hover:bg-surface-container-low transition-colors group">
-<div class="flex items-center gap-md">
-<img alt="Butter Croissant" class="w-16 h-16 rounded-lg object-cover border border-outline-variant shadow-sm group-hover:scale-105 transition-transform" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBVfdpsisB6mfwajSg8PyjSUNtT67DcYeyb2cT9LChQCxmPGMO1TpcrWOxEi65IXFmZ7f5rC2py2mxfUAa9Ur1Gi4VwnkX-YGZ0Nj0J5v8aVdFKIoCi_Y__hXhOp6UQlqrk2VaoOllzRfqMMRJMlaAbEIBSgc4QSnG4ArGUmSU2x7o8flkdcIkM1w64164jTMIFi1UT0yIBJEL3wfI1Odc_wXdjh4y6XyBjKzV5LELKPD27GiD7Bc_79d21jMpzGS-H1ML5xV_GSQ"/>
-<div>
-<h4 class="font-body-lg text-body-lg font-bold text-on-surface">Bánh Croissant Bơ</h4>
-<p class="font-body-sm text-body-sm text-on-surface-variant">Bơ AOP Isigny</p>
-</div>
-</div>
-<div class="text-right">
-<div class="font-h3 text-h3 text-on-surface">86</div>
-<div class="text-label-caps text-on-surface-variant">ĐÃ BÁN HÔM NAY</div>
-</div>
-</div>
+<div v-if="summary.lowStockProducts.length === 0" class="p-md text-center text-on-surface-variant">Không có sản phẩm nào sắp hết hàng.</div>
 </div>
 </section>
 <!-- Recent Activity Feed -->
-<section class="lg:col-span-4 bg-surface-container-lowest border border-outline-variant rounded-xl shadow-sm flex flex-col">
+<section class="lg:col-span-4 bg-surface-container-lowest border border-outline-variant rounded-xl shadow-sm flex flex-col" v-if="summary">
 <div class="p-md border-b border-outline-variant">
-<h3 class="font-h3 text-h3 text-on-surface">Hoạt động gần đây</h3>
+<h3 class="font-h3 text-h3 text-on-surface">Đơn hàng gần đây</h3>
 </div>
 <div class="p-md space-y-lg flex-grow">
-<!-- Activity Item -->
-<div class="flex gap-sm relative">
+<div v-for="o in summary.recentOrders" :key="o.orderId" class="flex gap-sm relative">
 <div class="flex flex-col items-center shrink-0">
-<div class="w-2.5 h-2.5 rounded-full bg-primary z-10 border-2 border-surface"></div>
+<div class="w-2.5 h-2.5 rounded-full z-10 border-2 border-surface" :class="o.orderStatus === 'delivered' ? 'bg-green-500' : 'bg-primary'"></div>
 <div class="w-[1px] h-full bg-outline-variant absolute top-1"></div>
 </div>
 <div class="pb-base">
-<p class="font-body-sm text-on-surface leading-tight"><span class="font-bold">Đơn hàng sỉ mới</span> từ 'The Green Bean Café'</p>
-<span class="text-label-caps text-[10px] text-on-surface-variant mt-1 block">12 PHÚT TRƯỚC</span>
+<p class="font-body-sm text-on-surface leading-tight"><span class="font-bold">Đơn #ORD-{{ o.orderId }}</span> từ {{ o.customerName }}</p>
+<span class="text-label-caps text-[10px] text-on-surface-variant mt-1 block">{{ formatDate(o.createdAt) }} - {{ formatPrice(o.totalPrice) }}</span>
 </div>
 </div>
-<!-- Activity Item -->
-<div class="flex gap-sm relative">
-<div class="flex flex-col items-center shrink-0">
-<div class="w-2.5 h-2.5 rounded-full bg-secondary z-10 border-2 border-surface"></div>
-<div class="w-[1px] h-full bg-outline-variant absolute top-1"></div>
-</div>
-<div class="pb-base">
-<p class="font-body-sm text-on-surface leading-tight"><span class="font-bold">Lô hàng #402 sẵn sàng</span>: Đế bánh đã chuyển sang Để nguội</p>
-<span class="text-label-caps text-[10px] text-on-surface-variant mt-1 block">45 PHÚT TRƯỚC</span>
-</div>
-</div>
-<!-- Activity Item -->
-<div class="flex gap-sm relative">
-<div class="flex flex-col items-center shrink-0">
-<div class="w-2.5 h-2.5 rounded-full bg-primary z-10 border-2 border-surface"></div>
-<div class="w-[1px] h-full bg-outline-variant absolute top-1"></div>
-</div>
-<div class="pb-base">
-<p class="font-body-sm text-on-surface leading-tight"><span class="font-bold">Cảnh báo kho hàng</span>: Bột lúa mạch đen sắp hết</p>
-<span class="text-label-caps text-[10px] text-on-surface-variant mt-1 block">1 GIỜ TRƯỚC</span>
-</div>
-</div>
-<!-- Activity Item -->
-<div class="flex gap-sm relative">
-<div class="flex flex-col items-center shrink-0">
-<div class="w-2.5 h-2.5 rounded-full bg-secondary z-10 border-2 border-surface"></div>
-</div>
-<div class="">
-<p class="font-body-sm text-on-surface leading-tight"><span class="font-bold">Đơn hàng hoàn tất</span>: #8892 (Lấy hàng trực tiếp)</p>
-<span class="text-label-caps text-[10px] text-on-surface-variant mt-1 block">2 GIỜ TRƯỚC</span>
-</div>
-</div>
+<div v-if="summary.recentOrders.length === 0" class="text-center text-on-surface-variant">Chưa có đơn hàng nào.</div>
 </div>
 <div class="p-md pt-0">
-<button class="w-full py-2.5 border border-outline-variant rounded-lg font-button text-on-surface-variant hover:bg-surface-container-high transition-all text-sm">Xem tất cả hoạt động</button>
+<router-link to="/payments" class="w-full py-2.5 border border-outline-variant rounded-lg font-button text-on-surface-variant hover:bg-surface-container-high transition-all text-sm flex justify-center">Xem tất cả đơn hàng</router-link>
 </div>
 </section>
 </div>
@@ -270,6 +201,65 @@
 </template>
 
 <script setup>
+import AdminSidebar from '../components/AdminSidebar.vue'
+import { ref, onMounted } from 'vue';
+import { Bar, Pie } from 'vue-chartjs';
+import { Chart as ChartJS, Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale, ArcElement } from 'chart.js';
+
+ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale, ArcElement);
+
+const revenueChartData = ref({ labels: [], datasets: [] });
+const categoryChartData = ref({ labels: [], datasets: [] });
+const summary = ref(null);
+const loaded = ref(false);
+
+const chartOptions = { responsive: true, maintainAspectRatio: false };
+const pieOptions = { responsive: true, maintainAspectRatio: false };
+
+const formatPrice = v => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(v);
+const formatDate = d => new Date(d).toLocaleString('vi-VN');
+const imgUrl = url => {
+  if(!url) return 'https://placehold.co/100x100?text=No+Image';
+  return url.startsWith('http') ? url : `${import.meta.env.VITE_BASE_URL}\${url}`;
+};
+
+const fetchSummary = async () => {
+  try {
+    const res = await fetch(import.meta.env.VITE_API_BASE_URL + '/dashboard/summary');
+    const json = await res.json();
+    if(json.success) summary.value = json.data;
+  } catch(e) { console.error(e); }
+};
+
+const fetchChartData = async () => {
+  try {
+    const res = await fetch(import.meta.env.VITE_API_BASE_URL + '/dashboard/chart-data');
+    const json = await res.json();
+    if(json.success) {
+      revenueChartData.value = {
+        labels: json.data.revenue.labels,
+        datasets: [{
+          label: 'Doanh thu ($)',
+          backgroundColor: '#98421f',
+          data: json.data.revenue.data
+        }]
+      };
+      categoryChartData.value = {
+        labels: json.data.category.labels,
+        datasets: [{
+          backgroundColor: ['#98421f', '#d28a5c', '#f0cba1', '#3e2723', '#795548', '#a87c69'],
+          data: json.data.category.data
+        }]
+      };
+      loaded.value = true;
+    }
+  } catch(e) { console.error(e); }
+};
+
+onMounted(() => {
+  fetchSummary();
+  fetchChartData();
+});
 </script>
 
 <style scoped>
@@ -286,3 +276,5 @@
         .font-h3 { font-family: 'Noto Serif', serif; }
     
 </style>
+
+

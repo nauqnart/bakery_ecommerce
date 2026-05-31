@@ -38,7 +38,9 @@ namespace StitchArtisan.Backend.Controllers
                 UserId = user.UserId,
                 FullName = user.FullName ?? string.Empty,
                 Email = user.Email,
-                Role = user.Role?.RoleName ?? "customer"
+                Phone = user.Phone,
+                Role = user.Role?.RoleName ?? "customer",
+                IsActive = user.IsActive
             }});
         }
 

@@ -32,13 +32,25 @@ namespace StitchArtisan.Backend.Models
         [Column("is_active")]
         public bool IsActive { get; set; } = true;
 
+        [Column("is_deleted")]
+        public bool IsDeleted { get; set; } = false;
+
         [Column("created_at")]
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         [Column("updated_at")]
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
+        [Column("reset_password_token")]
+        [StringLength(255)]
+        public string? ResetPasswordToken { get; set; }
+
+        [Column("reset_password_expiry")]
+        public DateTime? ResetPasswordExpiry { get; set; }
+
         [ForeignKey("RoleId")]
         public Role? Role { get; set; }
+
+        public ICollection<UserAddress> Addresses { get; set; } = new List<UserAddress>();
     }
 }

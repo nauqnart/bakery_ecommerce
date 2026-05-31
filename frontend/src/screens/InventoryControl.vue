@@ -1,47 +1,21 @@
 <template>
   <div class="inventorycontrol" style="display:flex;min-height:100vh;">
 
-    <!-- SideNavBar -->
-    <aside class="sidebar">
-      <div class="sidebar-brand">
-        <h2>Quản trị Bakery</h2>
-        <p>Vận hành Hàng ngày</p>
-      </div>
-      <nav class="sidebar-nav">
-        <router-link to="/dashboard" class="nav-item">
-          <span class="material-symbols-outlined">dashboard</span>
-          <span>Bảng điều khiển</span>
-        </router-link>
-        <router-link to="/payments" class="nav-item">
-          <span class="material-symbols-outlined">receipt_long</span>
-          <span>Lịch sử Hóa đơn</span>
-        </router-link>
-        <router-link to="/users" class="nav-item">
-          <span class="material-symbols-outlined">group</span>
-          <span>Quản lý Người dùng</span>
-        </router-link>
-        <router-link to="/inventory" class="nav-item nav-item--active">
-          <span class="material-symbols-outlined">inventory_2</span>
-          <span>Quản lý Sản phẩm</span>
-        </router-link>
-      </nav>
-      <div class="sidebar-footer">
-        <button class="btn-add-new" @click="openCreate">
-          <span class="material-symbols-outlined">add</span> Thêm sản phẩm
-        </button>
-      </div>
-    </aside>
+<AdminSidebar />
 
     <!-- Main -->
     <main style="flex:1;display:flex;flex-direction:column;">
       <!-- Header -->
       <header class="topbar">
         <h1>Kiểm soát Kho hàng</h1>
-        <div class="topbar-right">
+        <div class="topbar-right" style="display:flex; gap:1rem; align-items:center;">
           <div class="search-wrap">
             <span class="material-symbols-outlined">search</span>
             <input v-model="searchQuery" placeholder="Tìm kiếm sản phẩm..." />
           </div>
+          <button class="btn-primary" @click="openCreate" style="display:flex; align-items:center; gap:0.4rem; padding:0.6rem 1.25rem; background:#b36a3a; color:#fff; border:none; border-radius:8px; font-size:0.875rem; font-weight:600; cursor:pointer;">
+            <span class="material-symbols-outlined">add</span> Thêm sản phẩm
+          </button>
         </div>
       </header>
 
@@ -87,7 +61,10 @@
               <h3>{{ p.name }}</h3>
               <span class="card-price">{{ formatPrice(firstVariant(p)?.price) }}</span>
             </div>
-            <p class="card-desc">{{ p.baseDescription }}</p>
+            <div style="flex: 1; display: flex; flex-direction: column; align-items: flex-start;">
+              <p class="card-desc" :style="!p.isDescExpanded ? 'display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 0; word-break: break-word; flex: none;' : 'word-break: break-word; margin-bottom: 0; flex: none;'">{{ p.baseDescription }}</p>
+              <button v-if="(p.baseDescription || '').length > 60" @click="p.isDescExpanded = !p.isDescExpanded" style="background: none; border: none; color: #b36a3a; font-size: 0.75rem; padding: 0; cursor: pointer; margin-top: 4px; font-weight: 600;">{{ p.isDescExpanded ? 'Thu gọn' : 'Xem thêm' }}</button>
+            </div>
 
             <div class="card-stock" :class="{ 'card-stock--low': isLow(p) }">
               <div>
@@ -127,6 +104,7 @@
         </div>
 
         <form class="modal-form" @submit.prevent="submitForm">
+          <div class="modal-body">
           <!-- Image preview + upload -->
           <div class="img-upload-area" @click="triggerFileInput" @dragover.prevent @drop.prevent="onDrop">
             <img v-if="imagePreview" :src="imagePreview" class="img-preview" alt="preview" />
@@ -148,22 +126,97 @@
           <div class="form-row">
             <div class="field">
               <label>Tên sản phẩm *</label>
-              <input v-model="form.name" required placeholder="VD: Sourdough Artisan" />
+              <input v-model="form.name" required @blur="regenerateVariants" />
             </div>
             <div class="field">
-              <label>SKU *</label>
-              <input v-model="form.sku" required placeholder="VD: BREAD-001" />
+              <label>Danh mục</label>
+              <select v-model="form.categoryId">
+                <option :value="null">Không phân loại</option>
+                <option v-for="c in categories" :key="c.categoryId" :value="c.categoryId">{{ c.name }}</option>
+              </select>
             </div>
           </div>
 
-          <div class="form-row">
+          <div class="field-toggle" style="margin: 1.5rem 0 1rem; display:flex; align-items:center; gap: 0.5rem; cursor:pointer;" @click="toggleVariations">
+            <div :class="['toggle-switch', hasVariations ? 'toggle-on' : 'toggle-off']" style="width: 44px; height: 24px; border-radius: 12px; position: relative; transition: background-color 0.2s;" :style="{ background: hasVariations ? '#b36a3a' : '#ccc' }">
+               <div class="toggle-knob" style="width: 20px; height: 20px; background: white; border-radius: 50%; position: absolute; top: 2px; transition: left 0.2s;" :style="{ left: hasVariations ? '22px' : '2px' }"></div>
+            </div>
+            <span style="font-weight:600; color:#5a4a3a; user-select:none;">Sản phẩm này có nhiều lựa chọn (Kích cỡ, Hương vị...)</span>
+          </div>
+
+          <div v-if="!hasVariations" class="form-row" style="margin-bottom: 1.5rem;">
             <div class="field">
-              <label>Giá (VND) *</label>
-              <input v-model.number="form.price" type="number" min="0" step="500" required placeholder="85000" />
+              <label>Mã sản phẩm</label>
+              <input v-model="form.variants[0].sku" disabled style="background: #e8e0d8; cursor:not-allowed; color:#8a7060;" />
+            </div>
+            <div class="field">
+              <label>Giá bán (VND) *</label>
+              <input v-model.number="form.variants[0].price" type="number" min="0" required placeholder="0" />
             </div>
             <div class="field">
               <label>Tồn kho *</label>
-              <input v-model.number="form.stockQuantity" type="number" min="0" required placeholder="20" />
+              <input v-model.number="form.variants[0].stockQuantity" type="number" min="0" required placeholder="0" />
+            </div>
+          </div>
+
+          <div v-if="hasVariations">
+            <hr style="margin: 1rem 0; border: none; border-top: 1px solid #e0d8d0;" />
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
+              <label style="margin:0; font-weight:600; font-size:16px;">Nhóm Phân loại (Tối đa 2)</label>
+              <button type="button" @click="addTier" v-if="form.tierVariations.length < 2" style="padding: 4px 12px; font-size:13px; border-radius: 4px; display:flex; align-items:center; background:#b36a3a; color:white; border:none; cursor:pointer;">
+                <span class="material-symbols-outlined" style="font-size:16px;">add</span> Thêm nhóm
+              </button>
+            </div>
+
+            <div v-for="(tier, tIdx) in form.tierVariations" :key="tIdx" style="border: 1px solid #e0d8d0; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; position: relative; background: #faf8f5;">
+              <button type="button" @click="removeTier(tIdx)" style="position:absolute; top: 12px; right: 12px; color: #dc2626; background: none; border: none; cursor: pointer;">
+                <span class="material-symbols-outlined">close</span>
+              </button>
+              <div class="field">
+                <label>Tên nhóm (VD: Kích cỡ) *</label>
+                <input v-model="tier.name" required placeholder="Nhập tên nhóm" @input="regenerateVariants" />
+              </div>
+              <div class="field" style="margin-top: 0.5rem;">
+                <label>Tùy chọn (Ví dụ: S, M, Đỏ...)</label>
+                <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom: 8px;">
+                  <span v-for="(val, vIdx) in tier.values" :key="vIdx" style="background:#b36a3a; color:white; padding:4px 12px; border-radius:16px; font-size:13px; display:flex; align-items:center; gap:4px;">
+                    {{ val }}
+                    <span class="material-symbols-outlined" style="font-size:14px; cursor:pointer;" @click="removeTierValue(tIdx, vIdx)">close</span>
+                  </span>
+                </div>
+                <div style="display:flex; gap: 8px;">
+                  <input v-model="tier.tempValue" @keydown.enter.prevent="addTierValue(tIdx)" placeholder="Nhập tên tùy chọn..." style="flex:1; padding: 0.6rem; border: 1px solid #e0d8d0; border-radius: 8px;" />
+                  <button type="button" @click="addTierValue(tIdx)" style="padding: 0 16px; border-radius: 4px; background:#b36a3a; color:#fff; border:none; cursor:pointer;">Thêm</button>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="form.variants.length > 0" style="margin-top: 1.5rem; margin-bottom: 1.5rem;">
+              <label style="font-weight:600; font-size:14px; margin-bottom: 0.5rem; display:block;">Thiết lập Giá & Tồn kho</label>
+              <table style="width:100%; border-collapse: collapse; font-size: 13px;">
+                <thead>
+                  <tr style="background: #faf8f5; border-bottom: 1px solid #e0d8d0;">
+                    <th style="padding: 8px; text-align:left;">Tên (Phân loại)</th>
+                    <th style="padding: 8px; text-align:left;">Mã sản phẩm *</th>
+                    <th style="padding: 8px; text-align:left;">Giá (VND) *</th>
+                    <th style="padding: 8px; text-align:left;">Tồn kho *</th>
+                    <th style="padding: 8px; text-align:center; width: 50px;">Xóa</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(v, idx) in form.variants" :key="idx" style="border-bottom: 1px solid #e0d8d0;">
+                    <td style="padding: 8px; font-weight:600;">{{ v.variantName }}</td>
+                    <td style="padding: 8px;"><input v-model="v.sku" disabled style="width:100%; padding:4px; border:1px solid #ccc; border-radius:4px; background: #e8e0d8; cursor:not-allowed;" /></td>
+                    <td style="padding: 8px;"><input v-model.number="v.price" type="number" min="0" required placeholder="Giá" style="width:100%; padding:4px; border:1px solid #ccc; border-radius:4px;" /></td>
+                    <td style="padding: 8px;"><input v-model.number="v.stockQuantity" type="number" min="0" required placeholder="Kho" style="width:100%; padding:4px; border:1px solid #ccc; border-radius:4px;" /></td>
+                    <td style="padding: 8px; text-align:center;">
+                      <button type="button" v-if="form.variants.length > 1" @click="removeVariant(idx)" style="color:#dc2626; background:none; border:none; cursor:pointer;" title="Xóa biến thể">
+                        <span class="material-symbols-outlined" style="font-size:20px;">delete</span>
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
 
@@ -173,6 +226,7 @@
           </div>
 
           <p v-if="submitError" class="field-error">{{ submitError }}</p>
+          </div>
 
           <div class="modal-footer">
             <button type="button" class="btn-cancel" @click="closeModal">Hủy</button>
@@ -210,12 +264,13 @@
 </template>
 
 <script setup>
+import AdminSidebar from '../components/AdminSidebar.vue'
 import { ref, computed, onMounted } from 'vue'
 
-const API = 'http://localhost:5072/api'
+const API = import.meta.env.VITE_API_BASE_URL + ''
 
-// ── State ─────────────────────────────────────────────
 const products     = ref([])
+const categories   = ref([])
 const loading      = ref(false)
 const fetchError   = ref('')
 const searchQuery  = ref('')
@@ -228,10 +283,12 @@ const uploadError  = ref('')
 const imagePreview = ref('')
 const fileInput    = ref(null)
 const selectedFile = ref(null)
+const hasVariations= ref(false)
 
 const form = ref({
-  name: '', sku: '', price: 0,
-  stockQuantity: 0, baseDescription: '', imageUrl: ''
+  name: '', baseDescription: '', imageUrl: '', categoryId: null,
+  tierVariations: [],
+  variants: [{ variantId: null, variantName: 'Mặc định', sku: '', price: 0, stockQuantity: 0, tierValues: [] }]
 })
 
 // ── Computed ──────────────────────────────────────────
@@ -253,7 +310,7 @@ const firstVariant = p => p.variants?.[0] ?? null
 const imageUrl = p => {
   const url = firstVariant(p)?.imageUrl
   if (!url) return 'https://placehold.co/400x300?text=No+Image'
-  return url.startsWith('http') ? url : `http://localhost:5072${url}`
+  return url.startsWith('http') ? url : `${import.meta.env.VITE_BASE_URL}\${url}`
 }
 
 const isLow = p => (firstVariant(p)?.stockQty ?? 0) <= 5
@@ -269,10 +326,16 @@ const formatPrice = v =>
 async function fetchProducts() {
   loading.value = true; fetchError.value = ''
   try {
-    const res = await fetch(`${API}/product`)
-    const json = await res.json()
-    if (json.success) products.value = json.data
+    const [resProd, resCat] = await Promise.all([
+      fetch(`${API}/product`),
+      fetch(`${API}/category`)
+    ])
+    const jsonProd = await resProd.json()
+    const jsonCat = await resCat.json()
+    if (jsonProd.success) products.value = jsonProd.data
     else fetchError.value = 'Không tải được sản phẩm.'
+    
+    if (jsonCat.success) categories.value = jsonCat.data
   } catch {
     fetchError.value = 'Lỗi kết nối tới server.'
   } finally {
@@ -283,24 +346,135 @@ async function fetchProducts() {
 // ── Modal open/close ──────────────────────────────────
 function openCreate() {
   editingId.value = null
-  form.value = { name:'', sku:'', price:0, stockQuantity:0, baseDescription:'', imageUrl:'' }
+  hasVariations.value = false
+  form.value = { 
+    name:'', baseDescription:'', imageUrl:'', categoryId: null,
+    tierVariations: [],
+    variants: [{ variantId: null, variantName: 'Mặc định', sku: '', price: 0, stockQuantity: 0, tierValues: [] }]
+  }
   imagePreview.value = ''; selectedFile.value = null; submitError.value = ''; uploadError.value = ''
   showModal.value = true
 }
 
 function openEdit(p) {
   editingId.value = p.productId
-  const v = firstVariant(p)
+  let parsedTiers = [];
+  try {
+    if (p.tierVariationsJson) parsedTiers = JSON.parse(p.tierVariationsJson);
+  } catch(e) {}
+  
   form.value = {
-    name: p.name, sku: v?.sku ?? '', price: v?.price ?? 0,
-    stockQuantity: v?.stockQty ?? 0, baseDescription: p.baseDescription ?? '', imageUrl: v?.imageUrl ?? ''
+    name: p.name,
+    categoryId: p.categoryId || null,
+    baseDescription: p.baseDescription || '',
+    imageUrl: firstVariant(p)?.imageUrl || '',
+    tierVariations: parsedTiers.map(t => ({ name: t.name || t.Name || '', values: t.values || t.Values || [], tempValue: '' })),
+    variants: p.variants && p.variants.length > 0 
+      ? JSON.parse(JSON.stringify(p.variants)).map(v => {
+          let parsedTV = [];
+          try { if (v.tierValuesJson) parsedTV = JSON.parse(v.tierValuesJson); } catch(e) {}
+          return {...v, stockQuantity: v.stockQty ?? 0, tierValues: parsedTV};
+        })
+      : [{ variantId: null, variantName: 'Mặc định', sku: '', price: 0, stockQuantity: 0, tierValues: [] }]
   }
-  imagePreview.value = v?.imageUrl ? imageUrl(p) : ''
+  hasVariations.value = parsedTiers.length > 0
+  imagePreview.value = imageUrl(p)
   selectedFile.value = null; submitError.value = ''; uploadError.value = ''
   showModal.value = true
 }
 
 function closeModal() { showModal.value = false }
+
+// ── Variations logic ──────────────────────────────────
+function toggleVariations() {
+  hasVariations.value = !hasVariations.value;
+  if (hasVariations.value) {
+    if (form.value.tierVariations.length === 0) {
+      addTier();
+    }
+  } else {
+    form.value.tierVariations = [];
+    regenerateVariants();
+  }
+}
+function addTier() {
+  if (form.value.tierVariations.length < 2) {
+    form.value.tierVariations.push({ name: '', values: [], tempValue: '' })
+    regenerateVariants()
+  }
+}
+function removeTier(idx) {
+  form.value.tierVariations.splice(idx, 1)
+  regenerateVariants()
+}
+function addTierValue(tIdx) {
+  const tier = form.value.tierVariations[tIdx]
+  const val = tier.tempValue.trim()
+  if (val && !tier.values.includes(val)) {
+    tier.values.push(val)
+    regenerateVariants()
+  }
+  tier.tempValue = ''
+}
+function removeTierValue(tIdx, vIdx) {
+  form.value.tierVariations[tIdx].values.splice(vIdx, 1)
+  regenerateVariants()
+}
+function removeVariant(idx) {
+  form.value.variants.splice(idx, 1)
+}
+
+const regenerateVariants = async () => {
+  if (form.value.tierVariations.length === 0 || form.value.tierVariations.every(t => t.values.length === 0)) {
+    const old = form.value.variants[0] || {};
+    form.value.variants = [{ 
+      variantId: old.variantId, 
+      variantName: 'Mặc định', 
+      sku: old.sku || '', 
+      price: old.price || 0, 
+      stockQuantity: old.stockQuantity || 0, 
+      imageUrl: form.value.imageUrl,
+      tierValues: [] 
+    }];
+  } else {
+    const groups = form.value.tierVariations.map(t => t.values.length > 0 ? t.values : ['']);
+    const combos = groups.reduce((a, b) => a.reduce((r, v) => r.concat(b.map(w => [].concat(v, w))), []));
+    
+    const newVars = combos.map(combo => {
+      const comboArr = Array.isArray(combo) ? combo : [combo];
+      const comboStr = comboArr.filter(c => c !== '').join(' - ');
+      const old = form.value.variants.find(v => JSON.stringify(v.tierValues) === JSON.stringify(comboArr));
+      return old ? { ...old, variantName: comboStr } : { 
+        variantId: null, 
+        variantName: comboStr, 
+        sku: '', 
+        price: form.value.variants[0]?.price || 0, 
+        stockQuantity: 0, 
+        imageUrl: form.value.imageUrl,
+        tierValues: comboArr 
+      };
+    });
+    form.value.variants = newVars;
+  }
+
+  if (form.value.name) {
+    for (let i = 0; i < form.value.variants.length; i++) {
+      let v = form.value.variants[i];
+      if (!v.sku) {
+        try {
+          const vName = v.variantName === 'Mặc định' ? '' : v.variantName;
+          const res = await fetch(`${API}/product/generate-sku?name=${encodeURIComponent(form.value.name)}&variantName=${encodeURIComponent(vName)}`);
+          const json = await res.json();
+          if (json.success && !form.value.variants[i].sku) {
+             form.value.variants[i].sku = json.sku;
+          }
+        } catch (e) {
+          console.error('Failed to generate SKU', e);
+        }
+      }
+    }
+  }
+}
 
 // ── Image handling ────────────────────────────────────
 function triggerFileInput() { fileInput.value?.click() }
@@ -323,30 +497,61 @@ function handleFile(file) {
 async function submitForm() {
   saving.value = true; submitError.value = ''
   try {
+    const token = localStorage.getItem('token') || ''
+    const headers = {
+       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+
     if (editingId.value) {
-      // 1. Update product info
       await fetch(`${API}/product/${editingId.value}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form.value)
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: form.value.name,
+          categoryId: form.value.categoryId,
+          baseDescription: form.value.baseDescription,
+          imageUrl: form.value.imageUrl,
+          tierVariations: form.value.tierVariations.map(t => ({ name: t.name, values: t.values })),
+          variants: form.value.variants
+        })
       })
-      // 2. Upload image if changed
       if (selectedFile.value) {
         const fd = new FormData()
         fd.append('image', selectedFile.value)
-        await fetch(`${API}/product/${editingId.value}/upload-image`, { method: 'POST', body: fd })
+        await fetch(`${API}/product/${editingId.value}/upload-image`, { method: 'POST', headers, body: fd })
       }
     } else {
-      // Create with image (multipart)
       const fd = new FormData()
       fd.append('Name', form.value.name)
-      fd.append('Sku', form.value.sku)
-      fd.append('Price', form.value.price)
-      fd.append('StockQuantity', form.value.stockQuantity)
+      if (form.value.categoryId) fd.append('CategoryId', form.value.categoryId)
       fd.append('BaseDescription', form.value.baseDescription)
+      
+      form.value.tierVariations.forEach((t, i) => {
+         fd.append(`TierVariations[${i}].Name`, t.name)
+         t.values.forEach((v, j) => {
+            fd.append(`TierVariations[${i}].Values[${j}]`, v)
+         })
+      })
+
+      form.value.variants.forEach((v, i) => {
+         fd.append(`Variants[${i}].VariantName`, v.variantName)
+         fd.append(`Variants[${i}].Sku`, v.sku)
+         fd.append(`Variants[${i}].Price`, v.price)
+         fd.append(`Variants[${i}].StockQuantity`, v.stockQuantity)
+         if (v.tierValues) {
+            v.tierValues.forEach((tv, j) => {
+                fd.append(`Variants[${i}].TierValues[${j}]`, tv)
+            })
+         }
+      })
+      
       if (selectedFile.value) fd.append('image', selectedFile.value)
 
-      const res = await fetch(`${API}/product/with-image`, { method: 'POST', body: fd })
+      const res = await fetch(`${API}/product/with-image`, {
+        method: 'POST',
+        headers,
+        body: fd
+      })
       const json = await res.json()
       if (!json.success) throw new Error(json.message || 'Tạo thất bại')
     }
@@ -366,9 +571,26 @@ async function doDelete() {
   if (!deleteTarget.value) return
   saving.value = true
   try {
-    await fetch(`${API}/product/${deleteTarget.value.productId}`, { method: 'DELETE' })
-    deleteTarget.value = null
-    await fetchProducts()
+    const token = localStorage.getItem('token') || ''
+    const res = await fetch(`${API}/product/${deleteTarget.value.productId}`, { 
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    
+    if (!res.ok) {
+      const data = await res.json()
+      alert(data.message || 'Lỗi khi xóa sản phẩm');
+    } else {
+      const data = await res.json()
+      if (!data.success) {
+        alert(data.message || 'Lỗi khi xóa sản phẩm');
+      } else {
+        deleteTarget.value = null
+        await fetchProducts()
+      }
+    }
+  } catch (err) {
+    alert('Đã xảy ra lỗi kết nối');
   } finally {
     saving.value = false
   }
@@ -384,18 +606,6 @@ onMounted(fetchProducts)
 
 /* Layout */
 .inventorycontrol { display: flex; min-height: 100vh; background: #faf8f5; font-family: 'Inter', sans-serif; }
-
-/* Sidebar */
-.sidebar { width: 260px; background: #fff; border-right: 1px solid #e8e0d8; display: flex; flex-direction: column; padding: 1.5rem 1rem; gap: 0.5rem; position: sticky; top: 0; height: 100vh; }
-.sidebar-brand h2 { font-size: 1.1rem; font-weight: 700; color: #b36a3a; margin: 0 0 0.2rem; }
-.sidebar-brand p  { font-size: 0.75rem; color: #8a7060; margin: 0 0 1.2rem; }
-.sidebar-nav { display: flex; flex-direction: column; gap: 0.25rem; flex: 1; }
-.nav-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.7rem 1rem; border-radius: 10px; text-decoration: none; color: #6b5c50; font-size: 0.9rem; transition: background 0.15s; }
-.nav-item:hover { background: #f5ede6; color: #b36a3a; }
-.nav-item--active { background: #f5ede6; color: #b36a3a; font-weight: 600; }
-.sidebar-footer { padding-top: 1rem; border-top: 1px solid #eee; }
-.btn-add-new { width: 100%; background: #b36a3a; color: #fff; border: none; border-radius: 10px; padding: 0.75rem 1rem; font-size: 0.9rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; justify-content: center; transition: opacity .15s; }
-.btn-add-new:hover { opacity: 0.9; }
 
 /* Topbar */
 .topbar { background: #fff; border-bottom: 1px solid #e8e0d8; padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 30; }
@@ -448,13 +658,14 @@ onMounted(fetchProducts)
 
 /* Modal */
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 1rem; }
-.modal { background: #fff; border-radius: 20px; width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.2); }
+.modal { background: #fff; border-radius: 20px; width: 100%; max-width: 560px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.2); }
 .modal--sm { max-width: 400px; }
-.modal-header { display: flex; justify-content: space-between; align-items: center; padding: 1.5rem 1.5rem 0; }
+.modal-header { display: flex; justify-content: space-between; align-items: center; padding: 1.5rem 1.5rem 1rem; flex-shrink: 0; border-bottom: 1px solid #f0e8e0; }
 .modal-header h2 { font-size: 1.1rem; font-weight: 700; color: #2c2018; margin: 0; }
 .modal-close { background: none; border: none; cursor: pointer; padding: 0.25rem; border-radius: 6px; display: flex; align-items: center; color: #8a7060; }
 .modal-close:hover { background: #f5ede6; }
-.modal-form { padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
+.modal-form { display: flex; flex-direction: column; flex: 1; overflow: hidden; padding: 0; }
+.modal-body { flex: 1; overflow-y: auto; padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 .field { display: flex; flex-direction: column; gap: 0.35rem; }
 .field label { font-size: 0.8rem; font-weight: 600; color: #5a4a3a; }
@@ -471,7 +682,7 @@ onMounted(fetchProducts)
 .img-preview { width: 100%; height: 200px; object-fit: cover; }
 
 /* Modal footer */
-.modal-footer { display: flex; justify-content: flex-end; gap: 0.75rem; padding: 1rem 1.5rem 1.5rem; border-top: 1px solid #f0e8e0; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 0.75rem; padding: 1rem 1.5rem; border-top: 1px solid #f0e8e0; flex-shrink: 0; background: #fff; }
 .btn-cancel { padding: 0.6rem 1.25rem; border: 1px solid #e0d8d0; background: #fff; color: #5a4a3a; border-radius: 8px; font-size: 0.875rem; font-weight: 600; cursor: pointer; }
 .btn-save { padding: 0.6rem 1.5rem; background: #b36a3a; color: #fff; border: none; border-radius: 8px; font-size: 0.875rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.4rem; }
 .btn-save:disabled { opacity: 0.6; cursor: not-allowed; }

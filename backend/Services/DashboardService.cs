@@ -62,8 +62,9 @@ namespace StitchArtisan.Backend.Services
                 {
                     ProductId = v.ProductId,
                     Name      = v.Product != null ? v.Product.Name : "—",
+                    Sku       = v.Sku,
                     StockQty  = v.StockQty,
-                    ImageUrl  = v.ImageUrl
+                    ImageUrl  = v.ImageUrl ?? (v.Product != null ? v.Product.Variants.Where(x => x.ImageUrl != null && x.ImageUrl != "").Select(x => x.ImageUrl).FirstOrDefault() : null)
                 })
                 .ToListAsync();
 
@@ -78,6 +79,88 @@ namespace StitchArtisan.Backend.Services
                 AvgOrderValue   = Math.Round(avgOrder, 0),
                 RecentOrders    = recentOrders,
                 LowStockProducts= lowStock
+            };
+        }
+
+        public async Task<object> GetRevenueChartAsync()
+        {
+            var orders = await _context.Orders
+                .Where(o => o.OrderStatus == "delivered" || o.OrderStatus == "completed")
+                .ToListAsync();
+
+            // Group by Day for the last 7 days (or simply by Date)
+            var revenueByDate = orders
+                .GroupBy(o => o.CreatedAt.Date)
+                .Select(g => new {
+                    Date = g.Key.ToString("yyyy-MM-dd"),
+                    Revenue = g.Sum(o => o.TotalPrice)
+                })
+                .OrderBy(x => x.Date)
+                .Take(7)
+                .ToList();
+
+            return new {
+                Labels = revenueByDate.Select(r => r.Date).ToList(),
+                Data = revenueByDate.Select(r => r.Revenue).ToList()
+            };
+        }
+
+        public async Task<object> GetTopProductsChartAsync()
+        {
+            var topProducts = await _context.OrderItems
+                .Include(oi => oi.Variant)
+                .ThenInclude(v => v.Product)
+                .GroupBy(oi => oi.Variant.Product.Name)
+                .Select(g => new {
+                    ProductName = g.Key,
+                    QuantitySold = g.Sum(oi => oi.Quantity)
+                })
+                .OrderByDescending(x => x.QuantitySold)
+                .Take(5)
+                .ToListAsync();
+
+            return new {
+                Labels = topProducts.Select(p => p.ProductName).ToList(),
+                Data = topProducts.Select(p => p.QuantitySold).ToList()
+            };
+        }
+
+        public async Task<object> GetChartDataAsync()
+        {
+            var orders = await _context.Orders
+                .Where(o => o.OrderStatus == "delivered" || o.OrderStatus == "completed")
+                .ToListAsync();
+
+            var revenueByDate = orders
+                .GroupBy(o => o.CreatedAt.Date)
+                .Select(g => new {
+                    Date = g.Key.ToString("dd-MM-yyyy"),
+                    Revenue = g.Sum(o => o.TotalPrice)
+                })
+                .OrderBy(x => x.Date)
+                .Take(7)
+                .ToList();
+
+            var categories = await _context.OrderItems
+                .Include(oi => oi.Variant)
+                .ThenInclude(v => v.Product)
+                .ThenInclude(p => p.Category)
+                .GroupBy(oi => oi.Variant.Product.Category != null ? oi.Variant.Product.Category.Name : "Khác")
+                .Select(g => new {
+                    CategoryName = g.Key,
+                    QuantitySold = g.Sum(oi => oi.Quantity)
+                })
+                .ToListAsync();
+
+            return new {
+                Revenue = new {
+                    Labels = revenueByDate.Select(r => r.Date).ToList(),
+                    Data = revenueByDate.Select(r => r.Revenue).ToList()
+                },
+                Category = new {
+                    Labels = categories.Select(c => c.CategoryName).ToList(),
+                    Data = categories.Select(c => c.QuantitySold).ToList()
+                }
             };
         }
     }

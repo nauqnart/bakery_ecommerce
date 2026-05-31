@@ -1,19 +1,7 @@
 <template>
   <div class="ph-layout">
 
-    <!-- Sidebar -->
-    <aside class="sidebar">
-      <div class="sidebar-brand">
-        <h2>Quản trị Bakery</h2>
-        <p>Vận hành Hàng ngày</p>
-      </div>
-      <nav class="sidebar-nav">
-        <router-link to="/dashboard" class="nav-item"><span class="material-symbols-outlined">dashboard</span><span>Bảng điều khiển</span></router-link>
-        <router-link to="/payments"  class="nav-item nav-item--active"><span class="material-symbols-outlined">receipt_long</span><span>Quản lý Đơn hàng</span></router-link>
-        <router-link to="/users"     class="nav-item"><span class="material-symbols-outlined">group</span><span>Quản lý Người dùng</span></router-link>
-        <router-link to="/inventory" class="nav-item"><span class="material-symbols-outlined">inventory_2</span><span>Quản lý Sản phẩm</span></router-link>
-      </nav>
-    </aside>
+    <AdminSidebar />
 
     <!-- Main -->
     <main class="ph-main">
@@ -27,6 +15,10 @@
             <span class="material-symbols-outlined">search</span>
             <input v-model="search" placeholder="Tìm mã đơn, tên khách..." />
           </div>
+          <button class="btn-refresh" @click="fetchOrders(currentPage)" :disabled="loading">
+            <span :class="['material-symbols-outlined', loading && 'spin']">refresh</span>
+            Làm mới
+          </button>
         </div>
       </header>
 
@@ -43,9 +35,8 @@
         <button v-for="t in tabs" :key="t.v" :class="['tab', activeTab===t.v&&'tab--on']" @click="activeTab=t.v">{{ t.label }}</button>
       </div>
 
-      <!-- Loading / Error -->
+      <!-- Loading -->
       <div v-if="loading" class="state-msg">Đang tải...</div>
-      <div v-else-if="err" class="state-msg state-err">{{ err }}</div>
 
       <!-- Table -->
       <div v-else class="table-wrap">
@@ -69,6 +60,19 @@
             <tr v-if="filtered.length===0"><td colspan="7" class="empty-cell"><span class="material-symbols-outlined">inbox</span><p>Không có đơn hàng</p></td></tr>
           </tbody>
         </table>
+
+        <!-- Pagination UI -->
+        <div v-if="!loading && totalPages > 1" class="flex justify-between items-center p-4 border-t border-outline-variant/30">
+          <span class="text-sm text-gray-500">Hiển thị {{ filtered.length }} đơn hàng trên trang này</span>
+          <div class="flex items-center gap-2">
+            <button @click="changePage(currentPage - 1)" :disabled="currentPage === 1" class="px-3 py-1 border rounded hover:bg-gray-100 disabled:opacity-50 text-sm">Trước</button>
+            <button v-for="p in totalPages" :key="p" @click="changePage(p)" :class="{'bg-[#b36a3a] text-white': currentPage === p, 'border text-gray-700 hover:bg-gray-100': currentPage !== p}" class="px-3 py-1 rounded text-sm">
+              {{ p }}
+            </button>
+            <button @click="changePage(currentPage + 1)" :disabled="currentPage === totalPages" class="px-3 py-1 border rounded hover:bg-gray-100 disabled:opacity-50 text-sm">Sau</button>
+          </div>
+        </div>
+
       </div>
     </main>
 
@@ -115,15 +119,17 @@
           <section class="drawer-section">
             <div class="section-title">Cập nhật trạng thái đơn hàng</div>
             <div class="status-flow">
-              <button
-                v-for="s in orderStatuses" :key="s.v"
-                :class="['status-btn', selected.orderStatus===s.v && 'status-btn--active', s.cls]"
-                :disabled="saving || selected.orderStatus===s.v"
-                @click="updateOrderStatus(s.v)"
-              >
-                <span class="material-symbols-outlined">{{ s.icon }}</span>
-                {{ s.label }}
-              </button>
+              <template v-for="s in orderStatuses" :key="s.v">
+                <button
+                  v-if="isStatusVisible(selected.orderStatus, s.v)"
+                  :class="['status-btn', selected.orderStatus===s.v && 'status-btn--active', s.cls]"
+                  :disabled="saving || selected.orderStatus===s.v"
+                  @click="updateOrderStatus(s.v)"
+                >
+                  <span class="material-symbols-outlined">{{ s.icon }}</span>
+                  {{ s.label }}
+                </button>
+              </template>
             </div>
           </section>
 
@@ -164,7 +170,6 @@
             </div>
           </section>
 
-          <p v-if="saveErr" class="drawer-err">{{ saveErr }}</p>
         </aside>
       </div>
     </transition>
@@ -172,19 +177,40 @@
 </template>
 
 <script setup>
+import AdminSidebar from '../components/AdminSidebar.vue'
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { toast } from 'vue3-toastify'
+import 'vue3-toastify/dist/index.css'
 
-const API_ORDER   = 'http://localhost:5072/api/order'
-const API_INVOICE = 'http://localhost:5072/api/invoice'
+const API_ORDER   = import.meta.env.VITE_API_BASE_URL + '/order'
+const API_INVOICE = import.meta.env.VITE_API_BASE_URL + '/invoice'
+const isAdmin = ref(false)
+
+const getAuthHeaders = () => {
+  const token = JSON.parse(localStorage.getItem('user'))?.token
+  return {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  }
+}
+
+const router = useRouter()
+function logout() {
+  localStorage.removeItem('user')
+  router.push('/login')
+}
 
 const orders  = ref([])
 const loading = ref(false)
-const err     = ref('')
-const search  = ref('')
 const activeTab = ref('all')
 const selected  = ref(null)
 const saving    = ref(false)
-const saveErr   = ref('')
+const search    = ref('')
+
+const currentPage = ref(1)
+const pageSize    = ref(20)
+const totalPages  = ref(1)
 
 const tabs = [
   { label: 'Tất cả',      v: 'all' },
@@ -203,6 +229,20 @@ const orderStatuses = [
   { v: 'cancelled',  label: 'Hủy đơn',   icon: 'cancel',             cls: 'osb-cancelled'  },
 ]
 
+function isStatusVisible(currentStatus, btnStatus) {
+  if (currentStatus === 'cancelled' || currentStatus === 'delivered') return false;
+  if (currentStatus === 'pending') {
+    return btnStatus === 'processing' || btnStatus === 'cancelled';
+  }
+  if (currentStatus === 'processing') {
+    return btnStatus === 'shipped' || btnStatus === 'cancelled';
+  }
+  if (currentStatus === 'shipped') {
+    return btnStatus === 'delivered' || btnStatus === 'cancelled';
+  }
+  return false;
+}
+
 const stats = computed(() => [
   { label: 'Tổng đơn',    value: orders.value.length,                                         icon: 'receipt_long',  cls: '' },
   { label: 'Đang xử lý', value: orders.value.filter(o=>o.orderStatus==='processing').length,  icon: 'pending',       cls: 'si-proc' },
@@ -219,26 +259,39 @@ const filtered = computed(() => {
   })
 })
 
-async function fetchOrders() {
-  loading.value = true; err.value = ''
+async function fetchOrders(page = 1) {
+  loading.value = true
   try {
-    const res  = await fetch(API_ORDER)
+    const res  = await fetch(`${API_ORDER}?page=${page}&pageSize=${pageSize.value}`, {
+      headers: getAuthHeaders()
+    })
     const json = await res.json()
-    orders.value = json.success ? json.data : []
-    if (!json.success) err.value = 'Không tải được đơn hàng.'
-  } catch { err.value = 'Lỗi kết nối server.' }
+    if (json.success) {
+      orders.value = json.data
+      totalPages.value = Math.ceil(json.totalCount / pageSize.value)
+      currentPage.value = page
+    } else {
+      toast.error('Không tải được đơn hàng.')
+      orders.value = []
+    }
+  } catch { toast.error('Lỗi kết nối server.') }
   finally { loading.value = false }
 }
 
-function openDetail(o) { selected.value = { ...o }; saveErr.value = '' }
+function changePage(page) {
+  if (page < 1 || page > totalPages.value) return;
+  fetchOrders(page);
+}
+
+function openDetail(o) { selected.value = { ...o } }
 
 async function updateOrderStatus(status) {
   if (!selected.value) return
-  saving.value = true; saveErr.value = ''
+  saving.value = true
   try {
     const res = await fetch(`${API_ORDER}/${selected.value.orderId}/status`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify(status)
     })
     const json = await res.json()
@@ -246,13 +299,14 @@ async function updateOrderStatus(status) {
     selected.value.orderStatus = status
     const o = orders.value.find(x => x.orderId === selected.value.orderId)
     if (o) o.orderStatus = status
-  } catch (e) { saveErr.value = e.message }
+    toast.success('Cập nhật trạng thái thành công!')
+  } catch (e) { toast.error(e.message || 'Lỗi khi cập nhật trạng thái') }
   finally { saving.value = false }
 }
 
 async function markPaid(method) {
   if (!selected.value?.invoice) return
-  saving.value = true; saveErr.value = ''
+  saving.value = true
   try {
     const invId = selected.value.invoice.invoiceId
     const url = method === 'refunded'
@@ -261,7 +315,7 @@ async function markPaid(method) {
     const body = method === 'refunded' ? 'refunded' : method
     const res  = await fetch(url, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify(body)
     })
     const json = await res.json()
@@ -270,7 +324,8 @@ async function markPaid(method) {
     selected.value.invoice.paymentMethod = method
     const o = orders.value.find(x => x.orderId === selected.value.orderId)
     if (o?.invoice) { o.invoice.paymentStatus = selected.value.invoice.paymentStatus }
-  } catch (e) { saveErr.value = e.message }
+    toast.success(method === 'refunded' ? 'Đã hoàn tiền!' : 'Xác nhận thanh toán thành công!')
+  } catch (e) { toast.error(e.message || 'Lỗi khi thanh toán') }
   finally { saving.value = false }
 }
 
@@ -279,23 +334,20 @@ const fmtMoney = v => v != null ? new Intl.NumberFormat('vi-VN',{style:'currency
 const orderLabel = s => ({ pending:'Chờ xử lý', processing:'Đang xử lý', shipped:'Đang giao', delivered:'Hoàn thành', cancelled:'Đã hủy' }[s] ?? s)
 const payLabel   = s => ({ unpaid:'Chưa TT', paid:'Đã TT', refunded:'Hoàn tiền', void:'Vô hiệu' }[s] ?? '—')
 
-onMounted(fetchOrders)
+onMounted(() => {
+  const role = localStorage.getItem('role')
+  if (role && role.toLowerCase() === 'admin') isAdmin.value = true
+  fetchOrders(currentPage.value)
+})
 </script>
 
 <style scoped>
 .material-symbols-outlined { font-family:'Material Symbols Outlined'; font-size:20px; line-height:1; }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* Layout */
 .ph-layout { display:flex; min-height:100vh; background:#faf8f5; font-family:'Inter',sans-serif; }
-
-/* Sidebar */
-.sidebar { width:252px; background:#fff; border-right:1px solid #e8e0d8; display:flex; flex-direction:column; padding:1.5rem 1rem; gap:.5rem; position:sticky; top:0; height:100vh; }
-.sidebar-brand h2 { font-size:1.05rem; font-weight:700; color:#b36a3a; margin:0 0 .2rem; }
-.sidebar-brand p  { font-size:.75rem; color:#8a7060; margin:0 0 1.2rem; }
-.sidebar-nav { display:flex; flex-direction:column; gap:.25rem; }
-.nav-item { display:flex; align-items:center; gap:.75rem; padding:.65rem 1rem; border-radius:10px; text-decoration:none; color:#6b5c50; font-size:.875rem; transition:background .15s; }
-.nav-item:hover   { background:#f5ede6; color:#b36a3a; }
-.nav-item--active { background:#f5ede6; color:#b36a3a; font-weight:600; }
 
 /* Main */
 .ph-main { flex:1; display:flex; flex-direction:column; }
@@ -307,6 +359,9 @@ onMounted(fetchOrders)
 .search-wrap .material-symbols-outlined { position:absolute; left:.75rem; top:50%; transform:translateY(-50%); color:#aaa; font-size:18px; }
 .search-wrap input { padding:.55rem .75rem .55rem 2.4rem; border:1px solid #e0d8d0; border-radius:8px; font-size:.875rem; background:#faf8f5; width:240px; outline:none; }
 .search-wrap input:focus { border-color:#b36a3a; }
+.btn-refresh { display:flex; align-items:center; gap:.4rem; padding:.55rem 1.1rem; border:1px solid #e0d8d0; background:#fff; color:#5a4a3a; border-radius:8px; font-size:.85rem; font-weight:600; cursor:pointer; transition: all .15s; }
+.btn-refresh:hover { background:#f5ede6; border-color:#b36a3a; color:#b36a3a; }
+.btn-refresh:disabled { opacity:.6; cursor:not-allowed; }
 
 /* Stats */
 .stats-row { display:flex; gap:1rem; padding:1.25rem 2rem 0; flex-wrap:wrap; }

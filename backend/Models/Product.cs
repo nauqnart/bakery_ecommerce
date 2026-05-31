@@ -24,6 +24,12 @@ namespace StitchArtisan.Backend.Models
         [Column("base_description")]
         public string? BaseDescription { get; set; }
 
+        [Column("tier_variations_json")]
+        public string? TierVariationsJson { get; set; }
+
+        [Column("is_deleted")]
+        public bool IsDeleted { get; set; } = false;
+
         [Column("created_at")]
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

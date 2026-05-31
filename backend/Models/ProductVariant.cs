@@ -17,6 +17,13 @@ namespace StitchArtisan.Backend.Models
         [StringLength(100)]
         public string Sku { get; set; } = string.Empty;
 
+        [Column("variant_name")]
+        [StringLength(200)]
+        public string VariantName { get; set; } = "Mặc định";
+
+        [Column("tier_values_json")]
+        public string? TierValuesJson { get; set; }
+
         [Column("price")]
         public decimal Price { get; set; }
 

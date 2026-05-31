@@ -2,8 +2,11 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using StitchArtisan.Backend.Data;
 
+using Microsoft.AspNetCore.Authorization;
+
 namespace StitchArtisan.Backend.Controllers
 {
+    [Authorize(Roles = "Admin,admin,Staff,staff")]
     [ApiController]
     [Route("api/[controller]")]
     public class InvoiceController : ControllerBase

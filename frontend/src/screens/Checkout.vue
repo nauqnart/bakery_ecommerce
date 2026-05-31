@@ -5,10 +5,29 @@
       <h1>Thanh toán</h1>
     </header>
 
-    <!-- Success screen -->
     <div v-if="orderDone" class="success-screen">
-      <div class="success-card">
-        <span class="material-symbols-outlined success-icon">check_circle</span>
+      <div class="success-card" v-if="paymentDone">
+        <span class="material-symbols-outlined success-icon" style="color: #5b7e6b;">task_alt</span>
+        <h2>Thanh toán thành công!</h2>
+        <p>Mã đơn hàng: <strong>#ORD-{{ orderId }}</strong></p>
+        <p>Hệ thống đã nhận được tiền chuyển khoản của bạn.</p>
+        <router-link to="/" class="btn-primary">Tiếp tục mua sắm</router-link>
+      </div>
+      <div class="success-card" v-else-if="qrUrl">
+        <span class="material-symbols-outlined success-icon" style="color: #f59e0b;">schedule</span>
+        <h2>Đơn hàng đang chờ thanh toán</h2>
+        <p>Mã đơn hàng: <strong>#ORD-{{ orderId }}</strong></p>
+        
+        <div class="qr-container">
+          <p class="qr-title">Quét mã QR để thanh toán</p>
+          <img :src="qrUrl" alt="VietQR" class="qr-image" />
+        </div>
+        <p class="success-sub">Hệ thống sẽ tự động xác nhận sau khi bạn chuyển khoản thành công (trong vòng 5-10 giây).</p>
+        
+        <router-link to="/" class="btn-primary">Tiếp tục mua sắm</router-link>
+      </div>
+      <div class="success-card" v-else>
+        <span class="material-symbols-outlined success-icon" style="color: #5b7e6b;">check_circle</span>
         <h2>Đặt hàng thành công!</h2>
         <p>Mã đơn hàng: <strong>#ORD-{{ orderId }}</strong></p>
         <p class="success-sub">Chúng tôi sẽ liên hệ xác nhận và giao hàng sớm nhất có thể.</p>
@@ -21,14 +40,25 @@
       <section class="co-form">
         <div class="form-section">
           <h2 class="section-title">Thông tin giao hàng</h2>
+          
+          <div v-if="userAddresses.length > 0" class="field mb-4 pb-4 border-b border-gray-200">
+            <label>Chọn từ sổ địa chỉ</label>
+            <select v-model="selectedAddressId" @change="onAddressSelect" class="w-full border border-gray-300 rounded px-3 py-2 bg-white text-sm focus:ring-[#b36a3a] focus:border-[#b36a3a] outline-none">
+              <option v-for="addr in userAddresses" :key="addr.userAddressId" :value="addr.userAddressId">
+                {{ addr.fullName }} - {{ addr.phone }} - {{ addr.addressLine }}
+              </option>
+              <option value="new">+ Nhập địa chỉ mới</option>
+            </select>
+          </div>
+
           <div class="field-row">
             <div class="field">
               <label>Họ tên *</label>
-              <input v-model="form.fullName" required placeholder="Nguyễn Văn A" />
+              <input v-model="form.fullName" required placeholder="Nguyễn Văn A" :disabled="selectedAddressId !== 'new' && userAddresses.length > 0" :class="{'bg-gray-100': selectedAddressId !== 'new' && userAddresses.length > 0}" />
             </div>
             <div class="field">
               <label>Số điện thoại *</label>
-              <input v-model="form.phone" required placeholder="0901234567" />
+              <input v-model="form.phone" required placeholder="0901234567" :disabled="selectedAddressId !== 'new' && userAddresses.length > 0" :class="{'bg-gray-100': selectedAddressId !== 'new' && userAddresses.length > 0}" />
             </div>
           </div>
           <div class="field">
@@ -37,7 +67,7 @@
           </div>
           <div class="field">
             <label>Địa chỉ giao hàng *</label>
-            <input v-model="form.address" required placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành" />
+            <input v-model="form.address" required placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành" :disabled="selectedAddressId !== 'new' && userAddresses.length > 0" :class="{'bg-gray-100': selectedAddressId !== 'new' && userAddresses.length > 0}" />
           </div>
           <div class="field">
             <label>Ghi chú cho đơn hàng</label>
@@ -61,7 +91,6 @@
           </div>
         </div>
 
-        <p v-if="submitErr" class="err-msg">{{ submitErr }}</p>
 
         <button class="btn-order" :disabled="placing || cart.items.length === 0" @click="placeOrder">
           <span v-if="placing" class="material-symbols-outlined spin">refresh</span>
@@ -93,11 +122,9 @@
         </div>
 
         <div class="sum-totals">
-          <div class="sum-row"><span>Tạm tính</span><span>{{ fmtMoney(cart.totalPrice) }}</span></div>
-          <div class="sum-row"><span>Thuế (10%)</span><span>{{ fmtMoney(cart.totalPrice * 0.1) }}</span></div>
           <div class="sum-row sum-row--total">
             <span>Tổng thanh toán</span>
-            <span>{{ fmtMoney(cart.totalPrice * 1.1) }}</span>
+            <span>{{ fmtMoney(cart.totalPrice) }}</span>
           </div>
         </div>
       </aside>
@@ -106,39 +133,113 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useCartStore } from '../stores/cartStore'
+import { toast } from 'vue3-toastify'
 
 const cart = useCartStore()
-const API  = 'http://localhost:5072/api/order'
+const API  = import.meta.env.VITE_API_BASE_URL + '/order'
 
 const form = ref({
   fullName: '', phone: '', email: '',
   address: '', note: '', payMethod: 'cod'
 })
-const placing   = ref(false)
-const submitErr = ref('')
-const orderDone = ref(false)
-const orderId   = ref(null)
+const placing     = ref(false)
+const orderDone   = ref(false)
+const orderId     = ref(null)
+const qrUrl       = ref(null)
+const paymentDone = ref(false)
+let pollingInterval = null
+
+const userAddresses = ref([])
+const selectedAddressId = ref('new')
+
+function onAddressSelect() {
+  if (selectedAddressId.value === 'new') {
+    form.value.fullName = ''
+    form.value.phone = ''
+    form.value.address = ''
+  } else {
+    const addr = userAddresses.value.find(a => a.userAddressId === selectedAddressId.value)
+    if (addr) {
+      form.value.fullName = addr.fullName
+      form.value.phone = addr.phone
+      form.value.address = addr.addressLine
+    }
+  }
+}
 
 const fmtMoney = v => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(v)
-const imgUrl   = url => url?.startsWith('http') ? url : `http://localhost:5072${url}`
+const imgUrl   = url => url?.startsWith('http') ? url : `${import.meta.env.VITE_BASE_URL}${url}`
+
+onMounted(async () => {
+  const userStr = localStorage.getItem('user')
+  if (userStr) {
+    const userObj = JSON.parse(userStr)
+    const token = userObj.token
+    const userId = userObj.userId
+    
+    try {
+      const pRes = await fetch(`${import.meta.env.VITE_API_BASE_URL}/user/${userId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      const pData = await pRes.json()
+      if (pData.success) {
+        form.value.fullName = pData.data.fullName || ''
+        form.value.email = pData.data.email || ''
+        form.value.phone = pData.data.phone || ''
+      }
+    } catch(e) {}
+    
+    try {
+      const aRes = await fetch(import.meta.env.VITE_API_BASE_URL + '/useraddress', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      const aData = await aRes.json()
+      if (aData.success && aData.data.length > 0) {
+        userAddresses.value = aData.data
+        const def = aData.data.find(a => a.isDefault) || aData.data[0]
+        selectedAddressId.value = def.userAddressId
+        onAddressSelect()
+      }
+    } catch(e) {}
+  }
+})
+
+onUnmounted(() => {
+  if (pollingInterval) clearInterval(pollingInterval)
+})
 
 async function placeOrder() {
   if (!form.value.fullName || !form.value.phone || !form.value.address) {
-    submitErr.value = 'Vui lòng điền đầy đủ thông tin họ tên, SĐT và địa chỉ.'; return
+    return toast.error('Vui lòng điền đầy đủ thông tin họ tên, SĐT và địa chỉ.');
   }
 
-  placing.value = true; submitErr.value = ''
+  placing.value = true;
   try {
-    // Lấy userId từ localStorage (nếu đã đăng nhập)
     const userStr = localStorage.getItem('user')
-    const userId  = userStr ? JSON.parse(userStr).userId : 1 // default guest
+    const userId  = userStr ? JSON.parse(userStr).userId : 1 
+
+    if (selectedAddressId.value === 'new' && userStr) {
+      try {
+        await fetch(import.meta.env.VITE_API_BASE_URL + '/useraddress', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${JSON.parse(userStr).token}` },
+          body: JSON.stringify({ 
+            fullName: form.value.fullName, 
+            phone: form.value.phone, 
+            addressLine: form.value.address, 
+            isDefault: userAddresses.value.length === 0 
+          })
+        })
+      } catch(e) { console.error('Failed to save new address', e) }
+    }
 
     const payload = {
       userId,
       shippingAddress: `${form.value.fullName} | ${form.value.phone} | ${form.value.address}`,
       note: form.value.note,
+      paymentMethod: form.value.payMethod,
       items: cart.items.map(i => ({
         variantId: i.variantId,
         quantity:  i.quantity
@@ -147,7 +248,10 @@ async function placeOrder() {
 
     const res  = await fetch(API, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        ...(userStr ? { 'Authorization': `Bearer ${JSON.parse(userStr).token}` } : {})
+      },
       body:    JSON.stringify(payload)
     })
     const json = await res.json()
@@ -155,10 +259,36 @@ async function placeOrder() {
     if (!json.success) throw new Error(json.message || 'Đặt hàng thất bại')
 
     orderId.value = json.data.orderId
+    
+    if (form.value.payMethod === 'bank' && userStr) {
+      const qrRes = await fetch(`${import.meta.env.VITE_API_BASE_URL}/payment/vietqr/${orderId.value}`, {
+        headers: { 'Authorization': `Bearer ${JSON.parse(userStr).token}` }
+      })
+      const qrJson = await qrRes.json()
+      if (qrJson.success) {
+        qrUrl.value = qrJson.qrUrl
+        
+        pollingInterval = setInterval(async () => {
+          try {
+            const statusRes = await fetch(`${import.meta.env.VITE_API_BASE_URL}/order/${orderId.value}`, {
+              headers: { 'Authorization': `Bearer ${JSON.parse(userStr).token}` }
+            })
+            const statusJson = await statusRes.json()
+            if (statusJson.success && statusJson.data.invoice?.paymentStatus === 'paid') {
+              clearInterval(pollingInterval)
+              paymentDone.value = true
+              qrUrl.value = null
+            }
+          } catch (err) {}
+        }, 3000)
+      }
+    }
+
     cart.clearCart()
-    orderDone.value = true
+    orderDone.value = true;
+    toast.success('Đặt hàng thành công!');
   } catch (e) {
-    submitErr.value = e.message
+    toast.error(e.message);
   } finally {
     placing.value = false
   }
@@ -229,4 +359,8 @@ async function placeOrder() {
 .success-card p { color: #6b5c50; margin: .3rem 0; }
 .success-sub { font-size: .85rem; color: #8a7060; margin-top: .5rem; }
 .btn-primary { display: inline-block; margin-top: 1.5rem; padding: .75rem 2rem; background: #b36a3a; color: #fff; border-radius: 10px; text-decoration: none; font-weight: 700; }
+
+.qr-container { margin-top: 1.5rem; padding: 1rem; background: #faf8f5; border-radius: 12px; border: 1px dashed #b36a3a; }
+.qr-title { font-weight: 700; color: #b36a3a; margin-bottom: 0.5rem; }
+.qr-image { width: 250px; height: 250px; margin: 0 auto; display: block; border-radius: 8px; }
 </style>

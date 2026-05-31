@@ -17,6 +17,10 @@ namespace StitchArtisan.Backend.Data
         public DbSet<Order> Orders { get; set; }
         public DbSet<OrderItem> OrderItems { get; set; }
         public DbSet<Invoice> Invoices { get; set; }
+        public DbSet<Cart> Carts { get; set; }
+        public DbSet<CartItem> CartItems { get; set; }
+        public DbSet<Wishlist> Wishlists { get; set; }
+        public DbSet<UserAddress> UserAddresses { get; set; }
         
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -40,9 +44,12 @@ namespace StitchArtisan.Backend.Data
                 .HasIndex(p => p.Slug)
                 .IsUnique();
 
-            modelBuilder.Entity<Category>()
-                .HasIndex(c => c.Slug)
-                .IsUnique();
+            modelBuilder.Entity<Product>()
+                .HasMany(p => p.Variants)
+                .WithOne(v => v.Product)
+                .HasForeignKey(v => v.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+
 
             modelBuilder.Entity<ProductVariant>()
                 .HasIndex(pv => pv.Sku)

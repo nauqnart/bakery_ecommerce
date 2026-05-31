@@ -5,6 +5,7 @@ namespace StitchArtisan.Backend.DTOs
         public int UserId { get; set; }
         public string ShippingAddress { get; set; } = string.Empty;
         public string Note { get; set; } = string.Empty;
+        public string PaymentMethod { get; set; } = "cod";
         public List<OrderItemDto> Items { get; set; } = new();
     }
 

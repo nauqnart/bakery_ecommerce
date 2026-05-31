@@ -92,7 +92,7 @@ const cart  = useCartStore()
 const router = useRouter()
 
 const fmtMoney = v => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(v)
-const imgUrl   = url => url?.startsWith('http') ? url : `http://localhost:5072${url}`
+const imgUrl   = url => url?.startsWith('http') ? url : `${import.meta.env.VITE_BASE_URL}\${url}`
 
 function closeCart() { emit('close') }
 

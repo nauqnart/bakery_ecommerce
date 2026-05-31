@@ -20,5 +20,26 @@ namespace StitchArtisan.Backend.Controllers
             var summary = await _dashboardService.GetSummaryAsync();
             return Ok(new { Success = true, Data = summary });
         }
+
+        [HttpGet("revenue")]
+        public async Task<IActionResult> GetRevenueChart()
+        {
+            var data = await _dashboardService.GetRevenueChartAsync();
+            return Ok(new { Success = true, Data = data });
+        }
+
+        [HttpGet("top-products")]
+        public async Task<IActionResult> GetTopProductsChart()
+        {
+            var data = await _dashboardService.GetTopProductsChartAsync();
+            return Ok(new { Success = true, Data = data });
+        }
+
+        [HttpGet("chart-data")]
+        public async Task<IActionResult> GetChartData()
+        {
+            var data = await _dashboardService.GetChartDataAsync();
+            return Ok(new { Success = true, Data = data });
+        }
     }
 }

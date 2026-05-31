@@ -1,16 +1,7 @@
 <template>
   <div class="db-layout">
 
-    <!-- Sidebar -->
-    <aside class="sidebar">
-      <div class="sidebar-brand"><h2>Quản trị Bakery</h2><p>Vận hành Hàng ngày</p></div>
-      <nav class="sidebar-nav">
-        <router-link to="/dashboard" class="nav-item nav-item--active"><span class="material-symbols-outlined">dashboard</span><span>Bảng điều khiển</span></router-link>
-        <router-link to="/payments"  class="nav-item"><span class="material-symbols-outlined">receipt_long</span><span>Quản lý Đơn hàng</span></router-link>
-        <router-link to="/users"     class="nav-item"><span class="material-symbols-outlined">group</span><span>Quản lý Người dùng</span></router-link>
-        <router-link to="/inventory" class="nav-item"><span class="material-symbols-outlined">inventory_2</span><span>Quản lý Sản phẩm</span></router-link>
-      </nav>
-    </aside>
+    <AdminSidebar />
 
     <!-- Main -->
     <main class="db-main">
@@ -23,7 +14,6 @@
       </header>
 
       <div v-if="loading" class="state-msg">Đang tải dữ liệu...</div>
-      <div v-else-if="err" class="state-msg state-err">{{ err }}</div>
 
       <div v-else class="db-content">
 
@@ -113,7 +103,7 @@
                   <div v-else class="ls-img-ph"><span class="material-symbols-outlined">bakery_dining</span></div>
                 </div>
                 <div class="ls-info">
-                  <div class="ls-name">{{ p.name }}</div>
+                  <div class="ls-name">{{ p.sku ? `${p.name} - ${p.sku}` : p.name }}</div>
                   <div class="ls-qty" :class="p.stockQty === 0 && 'ls-qty--zero'">
                     {{ p.stockQty === 0 ? 'HẾT HÀNG' : `Còn ${p.stockQty}` }}
                   </div>
@@ -126,6 +116,23 @@
           </div>
 
         </section>
+
+        <!-- Charts Grid -->
+        <section class="charts-grid">
+          <div class="panel">
+            <div class="panel-header"><h3>Biểu đồ Doanh thu (7 ngày)</h3></div>
+            <div class="panel-body chart-container">
+              <Line v-if="!loadingCharts && revenueChartData" :data="revenueChartData" :options="chartOptions" />
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><h3>Top 5 Bán Chạy</h3></div>
+            <div class="panel-body chart-container">
+              <Bar v-if="!loadingCharts && topProductsChartData" :data="topProductsChartData" :options="chartOptions" />
+            </div>
+          </div>
+        </section>
+
       </div>
     </main>
   </div>
@@ -133,29 +140,97 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import AdminSidebar from '../components/AdminSidebar.vue'
+import { Line, Bar } from 'vue-chartjs'
+import { toast } from 'vue3-toastify'
+import 'vue3-toastify/dist/index.css'
+import { Chart as ChartJS, Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale, PointElement, LineElement } from 'chart.js'
 
-const API  = 'http://localhost:5072/api/dashboard/summary'
+ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale, PointElement, LineElement)
+
+const API  = import.meta.env.VITE_API_BASE_URL + '/dashboard/summary'
+const API_REVENUE = import.meta.env.VITE_API_BASE_URL + '/dashboard/revenue'
+const API_TOP_PRODUCTS = import.meta.env.VITE_API_BASE_URL + '/dashboard/top-products'
+
+const getAuthHeaders = () => {
+  const token = JSON.parse(localStorage.getItem('user'))?.token
+  return {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  }
+}
+
+const router = useRouter()
+
 const data = ref({
   totalRevenue: 0, totalOrders: 0, pendingOrders: 0,
   totalProducts: 0, lowStockCount: 0, activeCustomers: 0, avgOrderValue: 0,
   recentOrders: [], lowStockProducts: []
 })
 const loading = ref(false)
-const err     = ref('')
+const loadingCharts = ref(false)
+const isAdmin = ref(false)
+
+const revenueChartData = ref(null)
+const topProductsChartData = ref(null)
+
+const chartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: { legend: { display: false } }
+}
 
 async function fetchData() {
-  loading.value = true; err.value = ''
+  const role = localStorage.getItem('role')
+  if (role && role.toLowerCase() === 'admin') isAdmin.value = true
+
+  loading.value = true
+  loadingCharts.value = true
   try {
-    const res  = await fetch(API)
+    const res  = await fetch(API, { headers: getAuthHeaders() })
     const json = await res.json()
     if (json.success) data.value = json.data
-    else err.value = 'Không tải được dữ liệu.'
-  } catch { err.value = 'Lỗi kết nối server.' }
-  finally { loading.value = false }
+    else toast.error('Không tải được dữ liệu.')
+
+    const resRev = await fetch(API_REVENUE, { headers: getAuthHeaders() })
+    const jsonRev = await resRev.json()
+    if (jsonRev.success) {
+      revenueChartData.value = {
+        labels: jsonRev.data.labels,
+        datasets: [{
+          label: 'Doanh thu',
+          data: jsonRev.data.data,
+          borderColor: '#b36a3a',
+          backgroundColor: 'rgba(179, 106, 58, 0.1)',
+          fill: true,
+          tension: 0.4
+        }]
+      }
+    }
+
+    const resTop = await fetch(API_TOP_PRODUCTS, { headers: getAuthHeaders() })
+    const jsonTop = await resTop.json()
+    if (jsonTop.success) {
+      topProductsChartData.value = {
+        labels: jsonTop.data.labels,
+        datasets: [{
+          label: 'Đã bán',
+          data: jsonTop.data.data,
+          backgroundColor: '#e09060'
+        }]
+      }
+    }
+
+  } catch { toast.error('Lỗi kết nối server.') }
+  finally { 
+    loading.value = false
+    loadingCharts.value = false 
+  }
 }
 
 const fmtMoney  = v => new Intl.NumberFormat('vi-VN',{style:'currency',currency:'VND'}).format(v ?? 0)
-const absImg    = url => url?.startsWith('http') ? url : `http://localhost:5072${url}`
+const absImg    = url => url?.startsWith('http') ? url : `${import.meta.env.VITE_BASE_URL}\${url}`
 const orderLabel = s => ({pending:'Chờ xử lý',processing:'Đang xử lý',shipped:'Đang giao',delivered:'Hoàn thành',cancelled:'Đã hủy'}[s] ?? s)
 
 onMounted(fetchData)
@@ -167,15 +242,6 @@ onMounted(fetchData)
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .db-layout { display:flex; min-height:100vh; background:#faf8f5; font-family:'Inter',sans-serif; }
-
-/* Sidebar */
-.sidebar { width:252px; background:#fff; border-right:1px solid #e8e0d8; display:flex; flex-direction:column; padding:1.5rem 1rem; gap:.5rem; position:sticky; top:0; height:100vh; }
-.sidebar-brand h2 { font-size:1.05rem; font-weight:700; color:#b36a3a; margin:0 0 .2rem; }
-.sidebar-brand p  { font-size:.75rem; color:#8a7060; margin:0 0 1.2rem; }
-.sidebar-nav { display:flex; flex-direction:column; gap:.25rem; }
-.nav-item { display:flex; align-items:center; gap:.75rem; padding:.65rem 1rem; border-radius:10px; text-decoration:none; color:#6b5c50; font-size:.875rem; transition:background .15s; }
-.nav-item:hover    { background:#f5ede6; color:#b36a3a; }
-.nav-item--active  { background:#f5ede6; color:#b36a3a; font-weight:600; }
 
 /* Main */
 .db-main { flex:1; display:flex; flex-direction:column; }
@@ -192,7 +258,10 @@ onMounted(fetchData)
 .db-content { display:flex; flex-direction:column; gap:1.5rem; padding:1.5rem 2rem 2rem; }
 
 /* KPI */
-.kpi-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px,1fr)); gap:1rem; }
+.kpi-grid { display:grid; grid-template-columns:repeat(5, 1fr); gap:1rem; }
+@media (max-width: 1200px) { .kpi-grid { grid-template-columns:repeat(3, 1fr); } }
+@media (max-width: 768px) { .kpi-grid { grid-template-columns:repeat(2, 1fr); } }
+@media (max-width: 480px) { .kpi-grid { grid-template-columns:1fr; } }
 .kpi-card { background:#fff; border:1px solid #e8e0d8; border-radius:16px; padding:1.25rem; display:flex; align-items:flex-start; gap:1rem; box-shadow:0 2px 8px rgba(0,0,0,.04); transition:box-shadow .2s; }
 .kpi-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.08); }
 .kpi-icon { width:44px; height:44px; border-radius:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
@@ -247,4 +316,10 @@ onMounted(fetchData)
 .ls-qty--zero { color:#c0392b; }
 .ls-bar-wrap { width:60px; height:6px; background:#f0e8e0; border-radius:3px; overflow:hidden; }
 .ls-bar { height:100%; background:#e09060; border-radius:3px; transition:width .3s; }
+
+/* Charts */
+.charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.5rem; }
+@media(max-width:900px){ .charts-grid { grid-template-columns:1fr; } }
+.chart-container { height: 300px; padding: 1rem; }
 </style>
+

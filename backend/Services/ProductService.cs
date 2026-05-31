@@ -15,6 +15,11 @@ namespace StitchArtisan.Backend.Services
 
         public async Task<IEnumerable<Product>> GetAllProductsAsync() => await _productRepository.GetAllAsync();
 
+        public async Task<(IEnumerable<Product> Products, int TotalCount)> GetPagedProductsAsync(int page, int pageSize, string? search, int? categoryId = null, string? sortBy = null, decimal? minPrice = null, decimal? maxPrice = null)
+        {
+            return await _productRepository.GetPagedAsync(page, pageSize, search, categoryId, sortBy, minPrice, maxPrice);
+        }
+
         public async Task<Product?> GetProductByIdAsync(int id) => await _productRepository.GetByIdAsync(id);
 
         public async Task<Product> CreateProductAsync(ProductCreateDto dto)
@@ -25,16 +30,16 @@ namespace StitchArtisan.Backend.Services
                 BaseDescription = dto.BaseDescription,
                 CategoryId = dto.CategoryId,
                 Slug = dto.Name.ToLower().Replace(" ", "-"),
-                Variants = new List<ProductVariant>
+                TierVariationsJson = dto.TierVariations.Any() ? System.Text.Json.JsonSerializer.Serialize(dto.TierVariations) : null,
+                Variants = dto.Variants.Select(v => new ProductVariant
                 {
-                    new ProductVariant
-                    {
-                        Sku = dto.Sku,
-                        Price = dto.Price,
-                        StockQty = dto.StockQuantity,
-                        ImageUrl = dto.ImageUrl
-                    }
-                }
+                    VariantName = v.VariantName,
+                    Sku = v.Sku,
+                    Price = v.Price,
+                    StockQty = v.StockQuantity,
+                    ImageUrl = v.ImageUrl ?? dto.ImageUrl,
+                    TierValuesJson = v.TierValues.Any() ? System.Text.Json.JsonSerializer.Serialize(v.TierValues) : null
+                }).ToList()
             };
             
             await _productRepository.AddAsync(product);
@@ -49,14 +54,42 @@ namespace StitchArtisan.Backend.Services
             product.Name = dto.Name;
             product.BaseDescription = dto.BaseDescription;
             product.CategoryId = dto.CategoryId;
+            product.TierVariationsJson = dto.TierVariations.Any() ? System.Text.Json.JsonSerializer.Serialize(dto.TierVariations) : null;
             
-            var variant = product.Variants.FirstOrDefault();
-            if (variant != null)
+            // Update existing and add new variants
+            foreach (var vDto in dto.Variants)
             {
-                variant.Sku = dto.Sku;
-                variant.Price = dto.Price;
-                variant.StockQty = dto.StockQuantity;
-                variant.ImageUrl = dto.ImageUrl;
+                var existing = product.Variants.FirstOrDefault(v => v.VariantId == vDto.VariantId);
+                var valuesJson = vDto.TierValues.Any() ? System.Text.Json.JsonSerializer.Serialize(vDto.TierValues) : null;
+                if (existing != null)
+                {
+                    existing.VariantName = vDto.VariantName;
+                    existing.Sku = vDto.Sku;
+                    existing.Price = vDto.Price;
+                    existing.StockQty = vDto.StockQuantity;
+                    existing.TierValuesJson = valuesJson;
+                    if (!string.IsNullOrEmpty(vDto.ImageUrl)) existing.ImageUrl = vDto.ImageUrl;
+                }
+                else
+                {
+                    product.Variants.Add(new ProductVariant
+                    {
+                        VariantName = vDto.VariantName,
+                        Sku = vDto.Sku,
+                        Price = vDto.Price,
+                        StockQty = vDto.StockQuantity,
+                        ImageUrl = vDto.ImageUrl,
+                        TierValuesJson = valuesJson
+                    });
+                }
+            }
+
+            // Remove deleted variants
+            var incomingIds = dto.Variants.Where(v => v.VariantId.HasValue).Select(v => v.VariantId.Value).ToList();
+            var toRemove = product.Variants.Where(v => v.VariantId != 0 && !incomingIds.Contains(v.VariantId)).ToList();
+            if (toRemove.Any())
+            {
+                await _productRepository.RemoveVariantsAsync(toRemove);
             }
 
             await _productRepository.UpdateAsync(product);

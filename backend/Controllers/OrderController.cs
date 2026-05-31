@@ -1,9 +1,12 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using StitchArtisan.Backend.DTOs;
 using StitchArtisan.Backend.Services;
 
 namespace StitchArtisan.Backend.Controllers
 {
+    [Authorize]
     [ApiController]
     [Route("api/[controller]")]
     public class OrderController : ControllerBase
@@ -15,10 +18,24 @@ namespace StitchArtisan.Backend.Controllers
             _orderService = orderService;
         }
 
+        [Authorize(Roles = "Admin,admin,Staff,staff")]
         [HttpGet]
-        public async Task<IActionResult> GetAll()
+        public async Task<IActionResult> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
         {
-            var orders = await _orderService.GetAllOrdersAsync();
+            var result = await _orderService.GetPagedOrdersAsync(page, pageSize);
+            return Ok(new { Success = true, Data = result.Orders, TotalCount = result.TotalCount, Page = page, PageSize = pageSize });
+        }
+
+        [HttpGet("my-orders")]
+        public async Task<IActionResult> GetMyOrders()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int userId))
+            {
+                return Unauthorized();
+            }
+
+            var orders = await _orderService.GetMyOrdersAsync(userId);
             return Ok(new { Success = true, Data = orders });
         }
 
@@ -35,6 +52,12 @@ namespace StitchArtisan.Backend.Controllers
         {
             try
             {
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+                if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
+                {
+                    dto.UserId = userId; // Overwrite UserId with the authenticated one
+                }
+
                 var order = await _orderService.CreateOrderAsync(dto);
                 return Ok(new { Success = true, Data = order });
             }
@@ -44,6 +67,7 @@ namespace StitchArtisan.Backend.Controllers
             }
         }
 
+        [Authorize(Roles = "Admin,admin,Staff,staff")]
         [HttpPut("{id}/status")]
         public async Task<IActionResult> UpdateStatus(int id, [FromBody] string status)
         {

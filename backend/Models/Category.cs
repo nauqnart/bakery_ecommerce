@@ -17,10 +17,6 @@ namespace StitchArtisan.Backend.Models
         [StringLength(255)]
         public string Name { get; set; } = string.Empty;
 
-        [Column("slug")]
-        [StringLength(191)]
-        public string Slug { get; set; } = string.Empty;
-
         [Column("description")]
         public string? Description { get; set; }
 

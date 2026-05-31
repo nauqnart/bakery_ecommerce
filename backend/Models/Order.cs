@@ -29,6 +29,10 @@ namespace StitchArtisan.Backend.Models
         [Column("created_at")]
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+        [Column("payment_method")]
+        [StringLength(50)]
+        public string PaymentMethod { get; set; } = "cod";
+
         [ForeignKey("UserId")]
         public User? User { get; set; }
 

@@ -6,27 +6,31 @@
         <div class="flex items-center gap-base">
           <router-link to="/" class="font-h2 text-h3 md:text-h2 font-bold text-primary">Hearth &amp; Harvest</router-link>
         </div>
-        <nav class="hidden md:flex items-center gap-lg">
-          <router-link to="/" class="text-on-surface-variant font-medium hover:text-primary transition-colors font-body-md">Cửa hàng</router-link>
-          <a class="text-on-surface-variant font-medium hover:text-primary transition-colors font-body-md" href="#story">Câu chuyện</a>
-          <a class="text-on-surface-variant font-medium hover:text-primary transition-colors font-body-md" href="#location">Địa điểm</a>
-        </nav>
+
         <div class="flex items-center gap-base">
-          <button class="relative p-base text-on-surface-variant hover:bg-surface-container-low transition-all rounded-full" @click="isCartOpen = true">
+          <button class="relative p-base text-on-surface-variant hover:bg-surface-container-low transition-all rounded-full flex items-center justify-center" @click="isCartOpen = true">
             <span class="material-symbols-outlined">shopping_basket</span>
             <span v-if="cart.totalItems > 0" class="cart-badge">{{ cart.totalItems }}</span>
           </button>
-          <button class="material-symbols-outlined p-base text-on-surface-variant hover:bg-surface-container-low transition-all rounded-full" @click="handleAccountClick">account_circle</button>
+          <button class="relative p-base text-on-surface-variant hover:bg-surface-container-low transition-all rounded-full flex items-center justify-center" @click="handleAccountClick">
+            <span class="material-symbols-outlined">account_circle</span>
+          </button>
         </div>
       </div>
     </header>
 
-    <main v-if="product" class="max-w-[1200px] mx-auto px-margin py-xl">
+    <main v-if="product" class="max-w-[1200px] mx-auto px-margin pt-md pb-xl">
+      <div class="mb-md">
+        <button @click="$router.push('/')" class="flex items-center gap-1 text-on-surface-variant hover:text-primary transition-colors font-body-md font-medium">
+          <span class="material-symbols-outlined text-[20px]">arrow_back</span>
+          Trở lại trang chủ
+        </button>
+      </div>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-xl">
         <!-- Image Section -->
         <div class="product-image-container">
           <div class="aspect-square bg-surface-container-low rounded-2xl overflow-hidden border border-outline-variant/30 shadow-md group">
-            <img v-if="product.imageUrl" :src="imgUrl(product.imageUrl)" :alt="product.name" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+            <img v-if="product.imageUrl || product.variants?.find(v => v?.imageUrl)?.imageUrl" :src="imgUrl(product.imageUrl || product.variants.find(v => v?.imageUrl)?.imageUrl)" :alt="product.name" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
             <div v-else class="w-full h-full flex items-center justify-center text-on-surface-variant/30">
               <span class="material-symbols-outlined text-[120px]">bakery_dining</span>
             </div>
@@ -36,48 +40,86 @@
         <!-- Info Section -->
         <div class="product-info-container flex flex-col gap-md">
           <div>
-            <span class="font-label-caps text-primary uppercase tracking-widest mb-xs block">Vừa ra khỏi lò</span>
+            <!-- Removed 'Vừa ra khỏi lò' text -->
             <h1 class="font-h1 text-on-surface mb-xs">{{ product.name }}</h1>
-            <p class="font-h2 text-primary font-bold">{{ fmtMoney(minPrice(product)) }}</p>
+            <p class="font-h2 text-primary font-bold">{{ fmtMoney(selectedVariant ? selectedVariant.price : minPrice(product)) }}</p>
           </div>
 
-          <p class="font-body-lg text-on-surface-variant leading-relaxed">
-            {{ product.baseDescription || product.description || 'Chưa có mô tả cho sản phẩm này.' }}
-          </p>
+          <div v-if="parsedTierVariations.length > 0" class="flex flex-col gap-4 mb-sm">
+            <div v-for="(tier, tIdx) in parsedTierVariations" :key="tIdx" class="flex flex-col gap-2">
+              <span class="font-bold text-on-surface">{{ tier.name }}:</span>
+              <div class="flex flex-wrap gap-2">
+                <button 
+                  v-for="val in tier.values" 
+                  :key="val" 
+                  @click="selectTierValue(tIdx, val)"
+                  :class="['px-4 py-2 rounded-lg font-medium border transition-colors text-sm', 
+                    selectedTiers[tIdx] === val 
+                      ? 'bg-primary text-white border-primary shadow-sm' 
+                      : 'bg-surface text-on-surface-variant hover:border-primary hover:text-primary']"
+                >
+                  {{ val }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div v-else-if="product.variants && product.variants.length > 1" class="flex flex-col gap-2 mb-sm">
+            <span class="font-bold text-on-surface">Lựa chọn:</span>
+            <div class="flex flex-wrap gap-2">
+              <button 
+                v-for="v in product.variants" 
+                :key="v.variantId" 
+                @click="selectedVariant = v"
+                :class="['px-4 py-2 rounded-lg font-medium border transition-colors text-sm', 
+                  selectedVariant?.variantId === v.variantId 
+                    ? 'bg-primary text-white border-primary shadow-sm' 
+                    : 'bg-surface text-on-surface-variant hover:border-primary hover:text-primary']"
+              >
+                {{ v.variantName }}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <p :class="['font-body-lg text-on-surface-variant leading-relaxed break-words', !isDescExpanded ? 'overflow-hidden' : '']" :style="!isDescExpanded ? 'display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word;' : 'word-break: break-word;'">
+              {{ product.baseDescription || product.description || 'Chưa có mô tả cho sản phẩm này.' }}
+            </p>
+            <button v-if="(product.baseDescription || product.description || '').length > 80" @click="isDescExpanded = !isDescExpanded" class="text-primary font-bold text-sm mt-1 hover:underline">
+              {{ isDescExpanded ? 'Thu gọn' : 'Xem thêm' }}
+            </button>
+          </div>
 
 
           <div class="flex flex-col gap-sm py-md border-y border-outline-variant/30">
             <div class="flex items-center gap-md">
-              <div class="flex items-center border border-outline rounded-lg overflow-hidden bg-surface">
+              <div class="flex items-center border border-outline rounded-lg overflow-hidden bg-surface" :class="{'opacity-50 pointer-events-none': selectedVariant?.stockQty === 0}">
                 <button @click="quantity > 1 && quantity--" class="w-10 h-10 flex items-center justify-center text-on-surface-variant hover:bg-surface-container transition-colors">
                   <span class="material-symbols-outlined text-[18px]">remove</span>
                 </button>
                 <span class="w-10 text-center font-bold text-on-surface">{{ quantity }}</span>
-                <button @click="quantity++" class="w-10 h-10 flex items-center justify-center text-on-surface-variant hover:bg-surface-container transition-colors">
+                <button @click="quantity < (selectedVariant?.stockQty || 1) && quantity++" class="w-10 h-10 flex items-center justify-center text-on-surface-variant hover:bg-surface-container transition-colors">
                   <span class="material-symbols-outlined text-[18px]">add</span>
                 </button>
               </div>
-              <button @click="addToCart" class="flex-1 bg-primary text-on-primary py-3 px-lg rounded-lg font-button hover:opacity-90 transition-all shadow-md shadow-primary/20 flex items-center justify-center gap-sm">
-                <span class="material-symbols-outlined">add_shopping_cart</span>
-                Thêm vào giỏ
+              <button 
+                @click="addToCart" 
+                :disabled="!selectedVariant || selectedVariant.stockQty === 0"
+                :class="[
+                  'flex-1 py-3 px-lg rounded-lg font-button transition-all flex items-center justify-center gap-sm',
+                  (!selectedVariant || selectedVariant.stockQty === 0)
+                    ? 'bg-surface-variant text-on-surface-variant cursor-not-allowed opacity-60' 
+                    : 'bg-primary text-on-primary hover:opacity-90 shadow-md shadow-primary/20'
+                ]"
+              >
+                <span class="material-symbols-outlined" v-if="!selectedVariant || selectedVariant.stockQty === 0">remove_shopping_cart</span>
+                <span class="material-symbols-outlined" v-else>add_shopping_cart</span>
+                {{ (!selectedVariant || selectedVariant.stockQty === 0) ? 'Hết hàng' : 'Thêm vào giỏ' }}
               </button>
             </div>
           </div>
 
-          <!-- Accordions -->
-          <div class="space-y-sm">
-            <div v-for="(detail, index) in details" :key="index" class="border-b border-outline-variant/30">
-              <button @click="activeDetail = activeDetail === index ? null : index" class="w-full py-md flex items-center justify-between text-on-surface hover:text-primary transition-colors">
-                <span class="font-bold text-sm uppercase tracking-wider">{{ detail.label }}</span>
-                <span class="material-symbols-outlined transition-transform duration-300" :class="activeDetail === index && 'rotate-180'">expand_more</span>
-              </button>
-              <transition name="fade">
-                <div v-if="activeDetail === index" class="pb-md text-on-surface-variant font-body-md animate-fade-down">
-                  {{ detail.content }}
-                </div>
-              </transition>
-            </div>
-          </div>
+
         </div>
       </div>
 
@@ -87,7 +129,7 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-gutter">
           <div v-for="rel in related" :key="rel.productId" @click="goToProduct(rel.productId)" class="bg-surface rounded-xl overflow-hidden border border-outline-variant/30 shadow-sm hover:shadow-md transition-all group cursor-pointer">
             <div class="relative h-48 overflow-hidden">
-              <img v-if="rel.imageUrl" :src="imgUrl(rel.imageUrl)" :alt="rel.name" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+              <img v-if="rel.imageUrl || rel.variants?.find(v => v?.imageUrl)?.imageUrl" :src="imgUrl(rel.imageUrl || rel.variants.find(v => v?.imageUrl)?.imageUrl)" :alt="rel.name" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
               <div v-else class="w-full h-full bg-surface-container-low flex items-center justify-center">
                 <span class="material-symbols-outlined text-[48px] text-on-surface-variant/30">bakery_dining</span>
               </div>
@@ -154,9 +196,14 @@ const product = ref(null);
 const related = ref([]);
 const loading = ref(true);
 const quantity = ref(1);
+const isDescExpanded = ref(false);
 const isCartOpen = ref(false);
 const toast = ref('');
 const activeDetail = ref(0);
+const user = ref(null);
+const selectedVariant = ref(null);
+const parsedTierVariations = ref([]);
+const selectedTiers = ref([]);
 
 const details = ref([
   { label: 'Thành phần', content: 'Bột mì hữu cơ cao cấp, men tự nhiên lên men 48h, nước lọc tinh khiết và muối biển tự nhiên. Không chứa chất bảo quản hay phụ gia thực phẩm.' },
@@ -167,12 +214,30 @@ const details = ref([
 const fetchProduct = async (id) => {
   loading.value = true;
   try {
-    const res = await fetch(`http://localhost:5072/api/product/${id}`);
+    const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/product/${id}`);
     const json = await res.json();
     if (json.success) {
       product.value = json.data;
+      
+      parsedTierVariations.value = [];
+      selectedTiers.value = [];
+      try {
+        if (product.value.tierVariationsJson) {
+          const raw = JSON.parse(product.value.tierVariationsJson);
+          parsedTierVariations.value = raw.map(t => ({
+             name: t.name || t.Name || '',
+             values: t.values || t.Values || []
+          }));
+          parsedTierVariations.value.forEach(t => selectedTiers.value.push(t.values[0] || ''));
+          updateSelectedVariantFromTiers();
+        }
+      } catch(e) {}
+
+      if (parsedTierVariations.value.length === 0 && product.value.variants?.length > 0) {
+        selectedVariant.value = product.value.variants[0];
+      }
       // Fetch related products (just a few from all products for now)
-      const allRes = await fetch('http://localhost:5072/api/product');
+      const allRes = await fetch(import.meta.env.VITE_API_BASE_URL + '/product');
       const allJson = await allRes.json();
       if (allJson.success) {
         related.value = allJson.data.filter(p => p.productId != id).slice(0, 4);
@@ -185,14 +250,33 @@ const fetchProduct = async (id) => {
   }
 };
 
-onMounted(() => fetchProduct(route.params.id));
+const selectTierValue = (tIdx, val) => {
+  selectedTiers.value[tIdx] = val;
+  updateSelectedVariantFromTiers();
+};
+
+const updateSelectedVariantFromTiers = () => {
+  if (!product.value || !product.value.variants) return;
+  const comboStr = JSON.stringify(selectedTiers.value);
+  selectedVariant.value = product.value.variants.find(v => {
+     let vals = [];
+     try { if (v.tierValuesJson) vals = JSON.parse(v.tierValuesJson); } catch(e){}
+     return JSON.stringify(vals) === comboStr;
+  });
+};
+
+onMounted(() => {
+  const userStr = localStorage.getItem('user');
+  if(userStr) user.value = JSON.parse(userStr);
+  fetchProduct(route.params.id);
+});
 watch(() => route.params.id, (newId) => fetchProduct(newId));
 
 const addToCart = () => {
   if (!product.value) return;
-  const variant = product.value.variants?.find(v => v.stockQty > 0) || product.value.variants?.[0];
-  if (!variant) {
-    showToast('Sản phẩm tạm hết hàng!');
+  const variant = selectedVariant.value || product.value.variants?.[0];
+  if (!variant || variant.stockQty <= 0) {
+    showToast('Sản phẩm hoặc phân loại này tạm hết hàng!');
     return;
   }
   // Logic to add multiple quantity
@@ -213,7 +297,7 @@ const goToProduct = (id) => {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
-const imgUrl = url => url?.startsWith('http') ? url : `http://localhost:5072${url}`;
+const imgUrl = url => url?.startsWith('http') ? url : `${import.meta.env.VITE_BASE_URL}\${url}`;
 const fmtMoney = v => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(v);
 const minPrice = p => {
   const prices = p.variants?.map(v => v.price) || [];

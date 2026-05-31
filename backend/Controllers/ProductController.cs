@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using StitchArtisan.Backend.Data;
@@ -6,34 +7,33 @@ using StitchArtisan.Backend.Services;
 
 namespace StitchArtisan.Backend.Controllers
 {
+    [Authorize]
     [ApiController]
     [Route("api/[controller]")]
     public class ProductController : ControllerBase
     {
         private readonly IProductService _productService;
         private readonly AppDbContext _context;
-        private readonly IWebHostEnvironment _env;
+        private readonly IPhotoService _photoService;
 
-        // Các định dạng ảnh được phép
-        private static readonly string[] _allowedExtensions = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
-        private const long MaxFileSizeBytes = 5 * 1024 * 1024; // 5 MB
-
-        public ProductController(IProductService productService, AppDbContext context, IWebHostEnvironment env)
+        public ProductController(IProductService productService, AppDbContext context, IPhotoService photoService)
         {
             _productService = productService;
             _context = context;
-            _env = env;
+            _photoService = photoService;
         }
 
         // GET /api/product
+        [AllowAnonymous]
         [HttpGet]
-        public async Task<IActionResult> GetAll()
+        public async Task<IActionResult> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? search = null, [FromQuery] int? categoryId = null, [FromQuery] string? sortBy = null, [FromQuery] decimal? minPrice = null, [FromQuery] decimal? maxPrice = null)
         {
-            var products = await _productService.GetAllProductsAsync();
-            return Ok(new { Success = true, Data = products });
+            var result = await _productService.GetPagedProductsAsync(page, pageSize, search, categoryId, sortBy, minPrice, maxPrice);
+            return Ok(new { Success = true, Data = result.Products, TotalCount = result.TotalCount, Page = page, PageSize = pageSize });
         }
 
         // GET /api/product/{id}
+        [AllowAnonymous]
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(int id)
         {
@@ -41,34 +41,113 @@ namespace StitchArtisan.Backend.Controllers
             if (product == null) return NotFound(new { Success = false, Message = "Product not found" });
             return Ok(new { Success = true, Data = product });
         }
+        [AllowAnonymous]
+        [HttpGet("generate-sku")]
+        public async Task<IActionResult> GenerateSku([FromQuery] string name, [FromQuery] string? variantName)
+        {
+            var baseSku = GetAbbreviation(name);
+            if (!string.IsNullOrWhiteSpace(variantName) && variantName != "Mặc định")
+            {
+                baseSku += "-" + GetAbbreviation(variantName);
+            }
 
-        // POST /api/product
+            if (string.IsNullOrWhiteSpace(baseSku))
+            {
+                return Ok(new { Success = true, Sku = "" });
+            }
+
+            baseSku = baseSku.ToUpper();
+            
+            // Check DB
+            string finalSku = baseSku;
+            int counter = 1;
+            while (await _context.ProductVariants.AnyAsync(v => v.Sku == finalSku))
+            {
+                finalSku = baseSku + counter.ToString();
+                counter++;
+            }
+
+            return Ok(new { Success = true, Sku = finalSku });
+        }
+
+        private string GetAbbreviation(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input)) return "";
+            
+            // Remove diacritics
+            var normalized = input.Normalize(System.Text.NormalizationForm.FormD);
+            var sb = new System.Text.StringBuilder();
+            foreach (var c in normalized)
+            {
+                if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark)
+                {
+                    sb.Append(c);
+                }
+            }
+            var withoutMarks = sb.ToString().Replace('đ', 'd').Replace('Đ', 'D');
+
+            var words = withoutMarks.Split(new[] { ' ', '-', '_' }, StringSplitOptions.RemoveEmptyEntries);
+            var result = "";
+            foreach (var word in words)
+            {
+                var chars = word.Where(char.IsLetterOrDigit).ToArray();
+                if (chars.Length > 0)
+                {
+                    result += chars[0];
+                }
+            }
+            return result;
+        }
+
+        [Authorize(Roles = "Admin,admin,Staff,staff")]
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] ProductCreateDto dto)
         {
-            var product = await _productService.CreateProductAsync(dto);
-            return CreatedAtAction(nameof(GetById), new { id = product.ProductId }, new { Success = true, Data = product });
+            try
+            {
+                var product = await _productService.CreateProductAsync(dto);
+                return CreatedAtAction(nameof(GetById), new { id = product.ProductId }, new { Success = true, Data = product });
+            }
+            catch (DbUpdateException)
+            {
+                return BadRequest(new { Success = false, Message = "Mã sản phẩm (SKU) đã tồn tại. Vui lòng chọn mã khác." });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { Success = false, Message = ex.Message });
+            }
         }
 
-        // POST /api/product/with-image  — tạo sản phẩm + upload ảnh cùng lúc (multipart/form-data)
+        [Authorize(Roles = "Admin,admin,Staff,staff")]
         [HttpPost("with-image")]
         [Consumes("multipart/form-data")]
         public async Task<IActionResult> CreateWithImage([FromForm] ProductCreateDto dto, IFormFile? image)
         {
-            // Upload ảnh trước (nếu có)
-            if (image != null)
+            try
             {
-                var uploadResult = await SaveImageAsync(image);
-                if (uploadResult.Error != null)
-                    return BadRequest(new { Success = false, Message = uploadResult.Error });
-                dto.ImageUrl = uploadResult.Url!;
-            }
+                if (image != null)
+                {
+                    var uploadResult = await _photoService.AddPhotoAsync(image);
+                    if (uploadResult.Error != null)
+                        return BadRequest(new { Success = false, Message = uploadResult.Error.Message });
+                    
+                    dto.ImageUrl = uploadResult.SecureUrl.ToString();
+                }
 
-            var product = await _productService.CreateProductAsync(dto);
-            return CreatedAtAction(nameof(GetById), new { id = product.ProductId }, new { Success = true, Data = product });
+                var product = await _productService.CreateProductAsync(dto);
+                return CreatedAtAction(nameof(GetById), new { id = product.ProductId }, new { Success = true, Data = product });
+            }
+            catch (DbUpdateException)
+            {
+                return BadRequest(new { Success = false, Message = "Mã sản phẩm (SKU) đã tồn tại. Vui lòng chọn mã khác." });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { Success = false, Message = ex.Message });
+            }
         }
 
-        // PUT /api/product/{id}
+        [Authorize(Roles = "Admin,admin,Staff,staff")]
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(int id, [FromBody] ProductUpdateDto dto)
         {
@@ -77,81 +156,56 @@ namespace StitchArtisan.Backend.Controllers
                 await _productService.UpdateProductAsync(id, dto);
                 return Ok(new { Success = true, Message = "Product updated successfully" });
             }
+            catch (DbUpdateException)
+            {
+                return BadRequest(new { Success = false, Message = "Mã sản phẩm (SKU) đã tồn tại. Vui lòng chọn mã khác." });
+            }
             catch (Exception ex)
             {
                 return BadRequest(new { Success = false, Message = ex.Message });
             }
         }
 
-        // POST /api/product/{id}/upload-image  — upload / thay ảnh cho variant đầu tiên
+        // POST /api/product/{id}/upload-image  — upload / thay ảnh cho tất cả variant
+        [Authorize(Roles = "Admin,admin,Staff,staff")]
         [HttpPost("{id}/upload-image")]
         [Consumes("multipart/form-data")]
         public async Task<IActionResult> UploadImage(int id, IFormFile image)
         {
-            // 1. Validate file
-            var uploadResult = await SaveImageAsync(image);
-            if (uploadResult.Error != null)
-                return BadRequest(new { Success = false, Message = uploadResult.Error });
+            var variants = await _context.ProductVariants
+                .Where(v => v.ProductId == id).ToListAsync();
 
-            // 2. Tìm variant đầu tiên của product, cập nhật ImageUrl
-            var variant = await _context.ProductVariants
-                .FirstOrDefaultAsync(v => v.ProductId == id);
-
-            if (variant == null)
+            if (!variants.Any())
                 return NotFound(new { Success = false, Message = "Product or variant not found" });
 
-            // 3. Xóa ảnh cũ nếu tồn tại trên server
-            DeleteOldImage(variant.ImageUrl);
+            var uploadResult = await _photoService.AddPhotoAsync(image);
+            if (uploadResult.Error != null)
+                return BadRequest(new { Success = false, Message = uploadResult.Error.Message });
 
-            variant.ImageUrl = uploadResult.Url!;
+            // Áp dụng ảnh mới cho tất cả các biến thể
+            foreach (var v in variants)
+            {
+                v.ImageUrl = uploadResult.SecureUrl.ToString();
+            }
             await _context.SaveChangesAsync();
 
-            return Ok(new { Success = true, ImageUrl = variant.ImageUrl });
+            return Ok(new { Success = true, ImageUrl = variants[0].ImageUrl });
         }
 
         // DELETE /api/product/{id}
+        [Authorize(Roles = "Admin,admin,Staff,staff")]
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(int id)
         {
-            await _productService.DeleteProductAsync(id);
-            return Ok(new { Success = true, Message = "Product deleted successfully" });
-        }
-
-        // ─── Helper methods ───────────────────────────────────────────────────────
-
-        private async Task<(string? Url, string? Error)> SaveImageAsync(IFormFile file)
-        {
-            // Kiểm tra kích thước
-            if (file.Length > MaxFileSizeBytes)
-                return (null, $"File vượt quá giới hạn {MaxFileSizeBytes / 1024 / 1024} MB");
-
-            // Kiểm tra phần mở rộng
-            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-            if (!_allowedExtensions.Contains(ext))
-                return (null, $"Định dạng không được phép. Chỉ chấp nhận: {string.Join(", ", _allowedExtensions)}");
-
-            // Tạo thư mục nếu chưa có
-            var uploadDir = Path.Combine(_env.WebRootPath, "images", "products");
-            Directory.CreateDirectory(uploadDir);
-
-            // Tên file unique để tránh trùng
-            var fileName = $"{Guid.NewGuid()}{ext}";
-            var fullPath = Path.Combine(uploadDir, fileName);
-
-            await using var stream = new FileStream(fullPath, FileMode.Create);
-            await file.CopyToAsync(stream);
-
-            // Trả về URL tương đối để lưu DB
-            var url = $"/images/products/{fileName}";
-            return (url, null);
-        }
-
-        private void DeleteOldImage(string? imageUrl)
-        {
-            if (string.IsNullOrWhiteSpace(imageUrl)) return;
-            var oldPath = Path.Combine(_env.WebRootPath, imageUrl.TrimStart('/'));
-            if (System.IO.File.Exists(oldPath))
-                System.IO.File.Delete(oldPath);
+            try 
+            {
+                await _productService.DeleteProductAsync(id);
+                return Ok(new { Success = true, Message = "Xóa sản phẩm thành công" });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { Success = false, Message = ex.Message });
+            }
         }
     }
 }

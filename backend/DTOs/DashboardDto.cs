@@ -27,6 +27,7 @@ namespace StitchArtisan.Backend.DTOs
     {
         public int     ProductId { get; set; }
         public string  Name      { get; set; } = string.Empty;
+        public string  Sku       { get; set; } = string.Empty;
         public int     StockQty  { get; set; }
         public string? ImageUrl  { get; set; }
     }

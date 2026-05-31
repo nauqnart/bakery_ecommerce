@@ -2,26 +2,7 @@
   <div class="um-layout">
 
     <!-- Sidebar -->
-    <aside class="sidebar">
-      <div class="sidebar-brand">
-        <h2>Quản trị Bakery</h2>
-        <p>Vận hành Hàng ngày</p>
-      </div>
-      <nav class="sidebar-nav">
-        <router-link to="/dashboard" class="nav-item">
-          <span class="material-symbols-outlined">dashboard</span><span>Bảng điều khiển</span>
-        </router-link>
-        <router-link to="/payments" class="nav-item">
-          <span class="material-symbols-outlined">receipt_long</span><span>Lịch sử Hóa đơn</span>
-        </router-link>
-        <router-link to="/users" class="nav-item nav-item--active">
-          <span class="material-symbols-outlined">group</span><span>Quản lý Người dùng</span>
-        </router-link>
-        <router-link to="/inventory" class="nav-item">
-          <span class="material-symbols-outlined">inventory_2</span><span>Quản lý Sản phẩm</span>
-        </router-link>
-      </nav>
-    </aside>
+    <AdminSidebar />
 
     <!-- Main -->
     <main class="um-main">
@@ -163,7 +144,7 @@
             </div>
           </div>
 
-          <div v-if="!editingId" class="field">
+          <div class="field">
             <label>Email *</label>
             <input v-model="form.email" type="email" required placeholder="example@email.com" />
           </div>
@@ -228,6 +209,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import AdminSidebar from '../components/AdminSidebar.vue'
 
 const API = 'http://localhost:5072/api/user'
 
@@ -299,7 +281,9 @@ function openCreate() {
 
 function openEdit(u) {
   editingId.value = u.userId
-  form.value = { fullName: u.fullName || '', phone: u.phone || '', email: u.email, password: '', roleId: u.roleId ?? 3, isActive: u.isActive ?? true }
+  const roleMap = { 'admin': 1, 'staff': 2, 'customer': 3 }
+  const rId = roleMap[u.role] || 3
+  form.value = { fullName: u.fullName || '', phone: u.phone || '', email: u.email, password: '', roleId: rId, isActive: u.isActive ?? true }
   submitError.value = ''; showModal.value = true
 }
 
@@ -366,14 +350,7 @@ onMounted(fetchUsers)
 /* Layout */
 .um-layout { display: flex; min-height: 100vh; background: #faf8f5; font-family: 'Inter', sans-serif; }
 
-/* Sidebar */
-.sidebar { width: 256px; min-height: 100vh; background: #fff; border-right: 1px solid #e8e0d8; display: flex; flex-direction: column; padding: 1.5rem 1rem; gap: .5rem; position: sticky; top: 0; height: 100vh; }
-.sidebar-brand h2 { font-size: 1.05rem; font-weight: 700; color: #b36a3a; margin: 0 0 .2rem; }
-.sidebar-brand p  { font-size: .75rem; color: #8a7060; margin: 0 0 1.2rem; }
-.sidebar-nav { display: flex; flex-direction: column; gap: .25rem; }
-.nav-item { display: flex; align-items: center; gap: .75rem; padding: .65rem 1rem; border-radius: 10px; text-decoration: none; color: #6b5c50; font-size: .875rem; transition: background .15s; }
-.nav-item:hover    { background: #f5ede6; color: #b36a3a; }
-.nav-item--active  { background: #f5ede6; color: #b36a3a; font-weight: 600; }
+
 
 /* Main */
 .um-main { flex: 1; display: flex; flex-direction: column; }
@@ -403,8 +380,8 @@ onMounted(fetchUsers)
 /* Filter tabs */
 .filter-tabs { display: flex; gap: .5rem; padding: 1.25rem 2rem 0; }
 .tab-btn { padding: .45rem 1.1rem; border-radius: 20px; border: 1px solid #e0d8d0; background: #fff; color: #8a7060; font-size: .8rem; font-weight: 600; cursor: pointer; transition: all .15s; }
-.tab-btn:hover    { border-color: #b36a3a; color: #b36a3a; }
-.tab-btn--active  { background: #b36a3a; color: #fff; border-color: #b36a3a; }
+.tab-btn:not(.tab-btn--active):hover { border-color: #b36a3a; color: #b36a3a; background: #fdf9f6; }
+.tab-btn.tab-btn--active { background: #b36a3a; color: #fff; border-color: #b36a3a; }
 
 /* State */
 .state-msg { text-align: center; padding: 3rem; color: #8a7060; }
