@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("StitchArtisan.Backend")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b436824a3b3e8afc22dbd0afc79ce634e21ddafa")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+23cd052db16963adcbf99729ac98ede0651a436d")]
 [assembly: System.Reflection.AssemblyProductAttribute("StitchArtisan.Backend")]
 [assembly: System.Reflection.AssemblyTitleAttribute("StitchArtisan.Backend")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

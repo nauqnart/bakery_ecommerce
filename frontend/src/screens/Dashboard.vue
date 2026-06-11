@@ -131,6 +131,12 @@
               <Bar v-if="!loadingCharts && topProductsChartData" :data="topProductsChartData" :options="chartOptions" />
             </div>
           </div>
+          <div class="panel">
+            <div class="panel-header"><h3>Top 5 Bán Ít Nhất</h3></div>
+            <div class="panel-body chart-container">
+              <Bar v-if="!loadingCharts && bottomProductsChartData" :data="bottomProductsChartData" :options="chartOptions" />
+            </div>
+          </div>
         </section>
 
       </div>
@@ -152,6 +158,7 @@ ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale,
 const API  = import.meta.env.VITE_API_BASE_URL + '/dashboard/summary'
 const API_REVENUE = import.meta.env.VITE_API_BASE_URL + '/dashboard/revenue'
 const API_TOP_PRODUCTS = import.meta.env.VITE_API_BASE_URL + '/dashboard/top-products'
+const API_BOTTOM_PRODUCTS = import.meta.env.VITE_API_BASE_URL + '/dashboard/bottom-products'
 
 const getAuthHeaders = () => {
   const token = JSON.parse(localStorage.getItem('user'))?.token
@@ -174,6 +181,7 @@ const isAdmin = ref(false)
 
 const revenueChartData = ref(null)
 const topProductsChartData = ref(null)
+const bottomProductsChartData = ref(null)
 
 const chartOptions = {
   responsive: true,
@@ -217,6 +225,19 @@ async function fetchData() {
         datasets: [{
           label: 'Đã bán',
           data: jsonTop.data.data,
+          backgroundColor: '#e09060'
+        }]
+      }
+    }
+
+    const resBottom = await fetch(API_BOTTOM_PRODUCTS, { headers: getAuthHeaders() })
+    const jsonBottom = await resBottom.json()
+    if (jsonBottom.success) {
+      bottomProductsChartData.value = {
+        labels: jsonBottom.data.labels,
+        datasets: [{
+          label: 'Đã bán',
+          data: jsonBottom.data.data,
           backgroundColor: '#e09060'
         }]
       }
@@ -318,7 +339,8 @@ onMounted(fetchData)
 .ls-bar { height:100%; background:#e09060; border-radius:3px; transition:width .3s; }
 
 /* Charts */
-.charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.5rem; }
+.charts-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 1.5rem; }
+@media(max-width:1200px){ .charts-grid { grid-template-columns: 1fr 1fr; } }
 @media(max-width:900px){ .charts-grid { grid-template-columns:1fr; } }
 .chart-container { height: 300px; padding: 1rem; }
 </style>

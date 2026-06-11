@@ -17,9 +17,13 @@ import Profile         from './screens/Profile.vue'
 
 import ProductDetails  from './screens/ProductDetails.vue'
 import Wishlist        from './screens/Wishlist.vue'
+import About           from './screens/About.vue'
+import Contact         from './screens/Contact.vue'
+import Products        from './screens/Products.vue'
 
 const routes = [
   { path: '/',          component: Home },
+  { path: '/products',  component: Products },
   { path: '/dashboard', component: Dashboard, meta: { requiresAuth: true, requiresStaff: true } },
   { path: '/categories', component: CategoryManagement, meta: { requiresAuth: true, requiresStaff: true } },
   { path: '/inventory', component: InventoryControl, meta: { requiresAuth: true, requiresStaff: true } },
@@ -35,6 +39,8 @@ const routes = [
   { path: '/my-orders', component: MyOrders, meta: { requiresAuth: true } },
   { path: '/profile', component: Profile, meta: { requiresAuth: true } },
   { path: '/wishlist', component: Wishlist, meta: { requiresAuth: true } },
+  { path: '/about', component: About },
+  { path: '/contact', component: Contact },
   { path: '/:pathMatch(.*)*', name: 'NotFound', component: () => import('./screens/NotFound.vue') },
 ]
 

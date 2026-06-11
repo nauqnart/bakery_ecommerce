@@ -125,6 +125,26 @@ namespace StitchArtisan.Backend.Services
             };
         }
 
+        public async Task<object> GetBottomProductsChartAsync()
+        {
+            var bottomProducts = await _context.OrderItems
+                .Include(oi => oi.Variant)
+                .ThenInclude(v => v.Product)
+                .GroupBy(oi => oi.Variant.Product.Name)
+                .Select(g => new {
+                    ProductName = g.Key,
+                    QuantitySold = g.Sum(oi => oi.Quantity)
+                })
+                .OrderBy(x => x.QuantitySold)
+                .Take(5)
+                .ToListAsync();
+
+            return new {
+                Labels = bottomProducts.Select(p => p.ProductName).ToList(),
+                Data = bottomProducts.Select(p => p.QuantitySold).ToList()
+            };
+        }
+
         public async Task<object> GetChartDataAsync()
         {
             var orders = await _context.Orders

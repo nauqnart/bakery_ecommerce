@@ -35,6 +35,13 @@ namespace StitchArtisan.Backend.Controllers
             return Ok(new { Success = true, Data = data });
         }
 
+        [HttpGet("bottom-products")]
+        public async Task<IActionResult> GetBottomProductsChart()
+        {
+            var data = await _dashboardService.GetBottomProductsChartAsync();
+            return Ok(new { Success = true, Data = data });
+        }
+
         [HttpGet("chart-data")]
         public async Task<IActionResult> GetChartData()
         {

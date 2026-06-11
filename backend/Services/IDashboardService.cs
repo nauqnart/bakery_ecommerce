@@ -7,6 +7,7 @@ namespace StitchArtisan.Backend.Services
         Task<DashboardSummaryDto> GetSummaryAsync();
         Task<object> GetRevenueChartAsync();
         Task<object> GetTopProductsChartAsync();
+        Task<object> GetBottomProductsChartAsync();
         Task<object> GetChartDataAsync();
     }
 }
